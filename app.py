@@ -96,7 +96,7 @@ st.markdown("""
         margin-bottom: 4px;
     }
     .lead-name {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 800;
         color: #111827;
         margin-bottom: 2px;
@@ -136,7 +136,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Default Fallback Targets
 DEFAULT_TARGETS = {
     '1000 ML PET-7-UP': 0.60,
     '1000 ML PET-M.DEW': 0.50,
@@ -167,16 +166,27 @@ def map_product_group(pname):
         return '500 ML PET (CSD Combined)'
     return p
 
+def clean_col_str(c):
+    return str(c).strip().lower().replace('_', '').replace(' ', '').replace('-', '').replace('/', '').replace('\\', '').replace('.', '').replace('(', '').replace(')', '')
+
 def get_best_col(df_columns, candidates):
-    cols_clean = {str(c).strip().lower().replace('_', '').replace(' ', '').replace('-', ''): c for c in df_columns}
+    cols_clean = {clean_col_str(c): c for c in df_columns}
     for cand in candidates:
-        cand_clean = cand.lower().replace('_', '').replace(' ', '').replace('-', '')
+        cand_clean = clean_col_str(cand)
         if cand_clean in cols_clean:
             return cols_clean[cand_clean]
     for c_clean, orig in cols_clean.items():
-        if any(cand.lower() in c_clean for cand in candidates):
+        if any(clean_col_str(cand) in c_clean for cand in candidates):
             return orig
     return None
+
+def clean_id_str(val):
+    if pd.isna(val) or str(val).strip() == "" or str(val).strip().lower() == "nan":
+        return ""
+    try:
+        return str(int(float(val)))
+    except Exception:
+        return str(val).strip()
 
 def load_target_data(target_bytes):
     targets_dict = DEFAULT_TARGETS.copy()
@@ -216,29 +226,63 @@ def load_sales_data(sales_bytes):
     df = pd.read_excel(io.BytesIO(sales_bytes), skiprows=header_idx)
     df.columns = [str(c).strip() for c in df.columns]
 
-    name_cols = [c for c in df.columns if not any(x in str(c).lower() for x in ['_id', ' id', '_code', ' code'])]
+    # Explicit column detection
+    dist_code_col = get_best_col(df.columns, ['distcode', 'distid', 'distributorcode', 'dist_code'])
+    
+    # Non-ID columns
+    name_cols = [c for c in df.columns if not any(x in clean_col_str(c) for x in ['id', 'code'])]
+    dist_name_col = get_best_col(name_cols, ['distname', 'distributor', 'dist'])
 
-    col_mapping = {
-        'Dist_Name': get_best_col(name_cols, ['distname', 'distributor', 'dist']),
-        'SDM/SDO/SDS': get_best_col(name_cols, ['sdmsdosds', 'sdmname', 'sdm', 'sdo', 'tse']),
-        'BOOKER_Name': get_best_col(name_cols, ['bookername', 'booker', 'psr', 'psrname', 'orderbooker']),
-        'PJP_Name': get_best_col(name_cols, ['pjpname', 'pjp', 'route', 'routename']),
-        'Outlet_Code': get_best_col(df.columns, ['outletcode', 'outletid', 'customercode']),
-        'Outlet_Name': get_best_col(name_cols, ['outletname', 'customername', 'shopname']),
-        'INVOICE_NUMBER': get_best_col(df.columns, ['invoicenumber', 'invoiceno', 'billno', 'orderid']),
-        'Product NAME': get_best_col(name_cols, ['productname', 'product', 'skuname', 'itemname']),
-        'PKG_NAME': get_best_col(name_cols, ['pkgname', 'package', 'packname', 'pack']),
-        'Sales_Raw Cases': get_best_col(df.columns, ['salesrawcases', 'salescases', 'rawcases', 'cases', 'saleqty'])
-    }
+    sdm_id_col = get_best_col(df.columns, ['sdmsdosdsid', 'sdmid', 'sdoid', 'tseid', 'sdm_id'])
+    sdm_name_col = get_best_col(name_cols, ['sdmsdosds', 'sdmname', 'sdm', 'sdo', 'tse'])
 
     standard_df = pd.DataFrame()
-    for std_name, found_col in col_mapping.items():
-        if found_col and found_col in df.columns:
-            standard_df[std_name] = df[found_col]
-        else:
-            standard_df[std_name] = "" if std_name != 'Sales_Raw Cases' else 0.0
+    standard_df['Dist_Code'] = df[dist_code_col].apply(clean_id_str) if dist_code_col else ""
+    standard_df['Raw_Dist_Name'] = df[dist_name_col].astype(str).str.strip() if dist_name_col else ""
+    
+    def format_dist(row):
+        name = row['Raw_Dist_Name']
+        code = row['Dist_Code']
+        if name and code:
+            return f"{name} - {code}"
+        return name or code or "Unknown Distributor"
+    standard_df['Dist_Name'] = standard_df.apply(format_dist, axis=1)
 
-    standard_df['Sales_Raw Cases'] = pd.to_numeric(standard_df['Sales_Raw Cases'], errors='coerce').fillna(0.0)
+    standard_df['SDM_ID'] = df[sdm_id_col].apply(clean_id_str) if sdm_id_col else ""
+    standard_df['Raw_SDM_Name'] = df[sdm_name_col].astype(str).str.strip() if sdm_name_col else ""
+    
+    def format_sdm(row):
+        name = row['Raw_SDM_Name']
+        code = row['SDM_ID']
+        if name and code:
+            return f"{name} - {code}"
+        return name or code or "Unknown SDM"
+    standard_df['SDM/SDO/SDS'] = standard_df.apply(format_sdm, axis=1)
+
+    booker_col = get_best_col(name_cols, ['bookername', 'booker', 'psr', 'psrname', 'orderbooker'])
+    standard_df['BOOKER_Name'] = df[booker_col].astype(str).str.strip() if booker_col else ""
+    
+    pjp_col = get_best_col(name_cols, ['pjpname', 'pjp', 'route', 'routename'])
+    standard_df['PJP_Name'] = df[pjp_col].astype(str).str.strip() if pjp_col else ""
+    
+    oc_col = get_best_col(df.columns, ['outletcode', 'outletid', 'customercode'])
+    standard_df['Outlet_Code'] = df[oc_col].apply(clean_id_str) if oc_col else ""
+    
+    on_col = get_best_col(name_cols, ['outletname', 'customername', 'shopname'])
+    standard_df['Outlet_Name'] = df[on_col].astype(str).str.strip() if on_col else ""
+    
+    inv_col = get_best_col(df.columns, ['invoicenumber', 'invoiceno', 'billno', 'orderid'])
+    standard_df['INVOICE_NUMBER'] = df[inv_col].astype(str).str.strip() if inv_col else ""
+    
+    p_col = get_best_col(name_cols, ['productname', 'product', 'skuname', 'itemname'])
+    standard_df['Product NAME'] = df[p_col].astype(str).str.strip() if p_col else ""
+    
+    pkg_col = get_best_col(name_cols, ['pkgname', 'package', 'packname', 'pack'])
+    standard_df['PKG_NAME'] = df[pkg_col].astype(str).str.strip() if pkg_col else ""
+    
+    s_col = get_best_col(df.columns, ['salesrawcases', 'salescases', 'rawcases', 'cases', 'saleqty'])
+    standard_df['Sales_Raw Cases'] = pd.to_numeric(df[s_col], errors='coerce').fillna(0.0) if s_col else 0.0
+
     standard_df['Target_Product_Group'] = standard_df['Product NAME'].apply(map_product_group)
 
     for cat_col in ['Dist_Name', 'SDM/SDO/SDS', 'BOOKER_Name', 'PJP_Name', 'Target_Product_Group', 'PKG_NAME']:
@@ -246,7 +290,7 @@ def load_sales_data(sales_bytes):
 
     return standard_df
 
-@st.cache_data(show_spinner="PJP Master File process ho raha hai...")
+@st.cache_data(show_spinner="PJP Master File process ho rahi hai...")
 def load_pjp_data(pjp_bytes, df_sales_ref=None):
     if pjp_bytes is None:
         return None
@@ -254,36 +298,59 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
         df_pjp = pd.read_excel(io.BytesIO(pjp_bytes))
         df_pjp.columns = [str(c).strip() for c in df_pjp.columns]
         
-        # Operational == 'Yes' outlets only
         op_col = get_best_col(df_pjp.columns, ['operational', 'status', 'active'])
         if op_col:
             df_pjp = df_pjp[df_pjp[op_col].astype(str).str.strip().str.lower() == 'yes'].copy()
 
-        name_cols = [c for c in df_pjp.columns if not any(x in str(c).lower() for x in ['_id', ' id', '_code', ' code'])]
+        name_cols = [c for c in df_pjp.columns if not any(x in clean_col_str(c) for x in ['id', 'code'])]
 
         pjp_std = pd.DataFrame()
-        pjp_std['Outlet_Code'] = df_pjp[get_best_col(df_pjp.columns, ['outletid', 'outletcode', 'customercode', 'code'])]
-        pjp_std['Outlet_Name'] = df_pjp[get_best_col(name_cols, ['outletname', 'customername', 'shopname', 'name'])]
+        oc_col = get_best_col(df_pjp.columns, ['outletid', 'outletcode', 'customercode', 'code'])
+        pjp_std['Outlet_Code'] = df_pjp[oc_col].apply(clean_id_str) if oc_col else ""
+        
+        on_col = get_best_col(name_cols, ['outletname', 'customername', 'shopname', 'name'])
+        pjp_std['Outlet_Name'] = df_pjp[on_col].astype(str).str.strip() if on_col else ""
         
         b_col = get_best_col(name_cols, ['bookername', 'booker', 'psr', 'orderbooker'])
-        pjp_std['BOOKER_Name'] = df_pjp[b_col] if b_col else ""
+        pjp_std['BOOKER_Name'] = df_pjp[b_col].astype(str).str.strip() if b_col else ""
         
         r_col = get_best_col(name_cols, ['routename', 'pjpname', 'pjp', 'route'])
-        pjp_std['PJP_Name'] = df_pjp[r_col] if r_col else ""
+        pjp_std['PJP_Name'] = df_pjp[r_col].astype(str).str.strip() if r_col else ""
         
-        d_col = get_best_col(name_cols, ['distname', 'distributor', 'dist'])
-        pjp_std['Dist_Name'] = df_pjp[d_col] if d_col else ""
+        d_code_col = get_best_col(df_pjp.columns, ['distid', 'distcode', 'distributorid'])
+        d_name_col = get_best_col(name_cols, ['distname', 'distributor', 'dist'])
         
-        s_col = get_best_col(name_cols, ['sdmsdosds', 'sdmname', 'sdm', 'sdo', 'tse'])
-        if s_col:
-            pjp_std['SDM/SDO/SDS'] = df_pjp[s_col]
+        pjp_std['Dist_Code'] = df_pjp[d_code_col].apply(clean_id_str) if d_code_col else ""
+        pjp_std['Raw_Dist_Name'] = df_pjp[d_name_col].astype(str).str.strip() if d_name_col else ""
+        
+        # Link SDM and full formatted Dist_Name
+        if df_sales_ref is not None:
+            # 1. Map Distributor Name
+            sales_dist_map = df_sales_ref[df_sales_ref['Dist_Code'] != ""].drop_duplicates('Dist_Code').set_index('Dist_Code')['Dist_Name'].to_dict()
+            pjp_std['Dist_Name'] = pjp_std['Dist_Code'].map(sales_dist_map)
+            missing_dist = pjp_std['Dist_Name'].isna()
+            pjp_std.loc[missing_dist, 'Dist_Name'] = pjp_std.loc[missing_dist].apply(
+                lambda r: f"{r['Raw_Dist_Name']} - {r['Dist_Code']}" if r['Raw_Dist_Name'] and r['Dist_Code'] else r['Raw_Dist_Name'], axis=1
+            )
+            
+            # 2. Smart SDM Linkage: First by Booker_Name (because each booker has exactly 1 SDM)
+            valid_sales = df_sales_ref[df_sales_ref['SDM/SDO/SDS'].astype(str).str.strip() != ""]
+            booker_to_sdm = valid_sales.drop_duplicates('BOOKER_Name').set_index('BOOKER_Name')['SDM/SDO/SDS'].to_dict()
+            outlet_to_sdm = valid_sales.drop_duplicates('Outlet_Code').set_index('Outlet_Code')['SDM/SDO/SDS'].to_dict()
+            dist_to_sdm = valid_sales.drop_duplicates('Dist_Code').set_index('Dist_Code')['SDM/SDO/SDS'].to_dict()
+
+            pjp_std['SDM/SDO/SDS'] = pjp_std['BOOKER_Name'].map(booker_to_sdm)
+            # Fallback 1: Outlet Code
+            need_sdm = pjp_std['SDM/SDO/SDS'].isna()
+            pjp_std.loc[need_sdm, 'SDM/SDO/SDS'] = pjp_std.loc[need_sdm, 'Outlet_Code'].map(outlet_to_sdm)
+            # Fallback 2: Dist Code
+            need_sdm2 = pjp_std['SDM/SDO/SDS'].isna()
+            pjp_std.loc[need_sdm2, 'SDM/SDO/SDS'] = pjp_std.loc[need_sdm2, 'Dist_Code'].map(dist_to_sdm).fillna("Unknown SDM")
         else:
-            # Map SDM from Sales file via Distributor or Booker
-            if df_sales_ref is not None:
-                dist_sdm_map = df_sales_ref.dropna(subset=['SDM/SDO/SDS']).drop_duplicates('Dist_Name').set_index('Dist_Name')['SDM/SDO/SDS'].to_dict()
-                pjp_std['SDM/SDO/SDS'] = pjp_std['Dist_Name'].map(dist_sdm_map).fillna("")
-            else:
-                pjp_std['SDM/SDO/SDS'] = ""
+            pjp_std['Dist_Name'] = pjp_std.apply(
+                lambda r: f"{r['Raw_Dist_Name']} - {r['Dist_Code']}" if r['Raw_Dist_Name'] and r['Dist_Code'] else r['Raw_Dist_Name'], axis=1
+            )
+            pjp_std['SDM/SDO/SDS'] = "Unknown SDM"
 
         # Map Days (1 = Planned)
         for day in DAYS_LIST:
@@ -342,8 +409,12 @@ if uploaded_sales is not None:
     f_sales = df_sales if sel_dist == "All" else df_sales[df_sales['Dist_Name'] == sel_dist]
     f_pjp = df_pjp_master if (df_pjp_master is None or sel_dist == "All") else df_pjp_master[df_pjp_master['Dist_Name'] == sel_dist]
 
+    # Clean SDM list from both PJP and Sales
     sdm_source = f_pjp if (f_pjp is not None and f_pjp['SDM/SDO/SDS'].astype(str).str.strip().ne("").any()) else f_sales
-    sdm_list = ["All"] + sorted([str(x) for x in sdm_source['SDM/SDO/SDS'].dropna().unique() if str(x).strip()])
+    raw_sdms = list(sdm_source['SDM/SDO/SDS'].dropna().unique())
+    clean_sdms = [str(x) for x in raw_sdms if str(x).strip() and str(x) != "Unknown SDM"]
+    sdm_list = ["All"] + sorted(list(set(clean_sdms)))
+
     sel_sdm = st.sidebar.selectbox("SDM / SDS / TSE", sdm_list)
     if sel_sdm != "All":
         f_sales = f_sales[f_sales['SDM/SDO/SDS'] == sel_sdm]
@@ -428,17 +499,22 @@ if uploaded_sales is not None:
     c3.markdown(f'<div class="metric-card"><div class="metric-val">{hit_count} / {len(target_mapping)}</div><div class="metric-lbl">Target Achieved SKUs 🎯</div></div>', unsafe_allow_html=True)
     c4.markdown(f'<div class="metric-card"><div class="metric-val">{(hit_count / len(target_mapping) * 100):.1f}%</div><div class="metric-lbl">SKU Hit Rate %</div></div>', unsafe_allow_html=True)
 
-    # ------------------ SAFE TOP & BOTTOM SDM & DISTRIBUTORS ------------------
+    # ------------------ ACCURATE TOP & BOTTOM SDM & DISTRIBUTORS ------------------
     sdm_performance = []
-    for s_name, s_sales in df_sales.groupby('SDM/SDO/SDS', observed=True):
-        if str(s_name).strip() == "":
+    # Loop across ALL SDMs from Sales
+    all_sdms = [s for s in df_sales['SDM/SDO/SDS'].dropna().unique() if str(s).strip() and str(s) != "Unknown SDM"]
+    
+    for s_name in all_sdms:
+        s_sales = df_sales[df_sales['SDM/SDO/SDS'] == s_name]
+        if len(s_sales) == 0:
             continue
+            
         if df_pjp_master is not None and 'SDM/SDO/SDS' in df_pjp_master.columns and (df_pjp_master['SDM/SDO/SDS'] == s_name).any():
             s_outlets = df_pjp_master[df_pjp_master['SDM/SDO/SDS'] == s_name]['Outlet_Code'].nunique()
         else:
             s_outlets = s_sales['Outlet_Code'].nunique()
             
-        if s_outlets < 5:
+        if s_outlets == 0:
             continue
             
         s_sku_bill = s_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if len(s_sales) > 0 else 0.0
@@ -455,15 +531,19 @@ if uploaded_sales is not None:
         df_sdm_rank = pd.DataFrame(columns=['Name', 'Outlets', 'SKU_Bill', 'Hit_Count', 'Hit_Rate'])
 
     dist_performance = []
-    for d_name, d_sales in df_sales.groupby('Dist_Name', observed=True):
-        if str(d_name).strip() == "":
+    all_dists = [d for d in df_sales['Dist_Name'].dropna().unique() if str(d).strip()]
+    
+    for d_name in all_dists:
+        d_sales = df_sales[df_sales['Dist_Name'] == d_name]
+        if len(d_sales) == 0:
             continue
+            
         if df_pjp_master is not None:
             d_outlets = df_pjp_master[df_pjp_master['Dist_Name'] == d_name]['Outlet_Code'].nunique()
         else:
             d_outlets = d_sales['Outlet_Code'].nunique()
             
-        if d_outlets < 5:
+        if d_outlets == 0:
             continue
             
         d_sku_bill = d_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if len(d_sales) > 0 else 0.0
@@ -642,9 +722,9 @@ if uploaded_sales is not None:
         outlet_bought_sets = valid_target_sales.groupby('Outlet_Code', observed=True)['Target_Product_Group'].apply(lambda s: set(s)).to_dict()
 
         if f_pjp is not None:
-            outlet_meta = f_pjp[['Outlet_Code', 'Outlet_Name', 'PJP_Name', 'BOOKER_Name', 'Dist_Name', 'Planned_Days'] + DAYS_LIST].copy()
+            outlet_meta = f_pjp[['Outlet_Code', 'Outlet_Name', 'PJP_Name', 'BOOKER_Name', 'Dist_Name', 'SDM/SDO/SDS', 'Planned_Days'] + DAYS_LIST].copy()
         else:
-            outlet_meta = f_sales[['Outlet_Code', 'Outlet_Name', 'PJP_Name', 'BOOKER_Name', 'Dist_Name']].drop_duplicates('Outlet_Code').copy()
+            outlet_meta = f_sales[['Outlet_Code', 'Outlet_Name', 'PJP_Name', 'BOOKER_Name', 'Dist_Name', 'SDM/SDO/SDS']].drop_duplicates('Outlet_Code').copy()
             outlet_meta['Planned_Days'] = "N/A (Upload PJP)"
             for day in DAYS_LIST:
                 outlet_meta[day] = 1
@@ -703,7 +783,7 @@ if uploaded_sales is not None:
 
         st.markdown(f"**Found {len(filtered_outlets):,} outlets** matching filters (Day: **{selected_day}** | Purchased: **{selected_pack}** | Missing: **{missing_range[0]} to {missing_range[1]} SKUs**).")
 
-        display_cols = ['Outlet_Code', 'Outlet_Name', 'BOOKER_Name', 'PJP_Name', 'Planned_Days', 'Billing_Status', 'SKUs_Missing', 'SKUs_Bought', 'Missing_Products_List']
+        display_cols = ['Outlet_Code', 'Outlet_Name', 'BOOKER_Name', 'PJP_Name', 'SDM/SDO/SDS', 'Planned_Days', 'Billing_Status', 'SKUs_Missing', 'SKUs_Bought', 'Missing_Products_List']
         st.dataframe(
             filtered_outlets[display_cols].sort_values(by='SKUs_Missing', ascending=False), 
             use_container_width=True, 
