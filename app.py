@@ -1,4 +1,5 @@
 import io
+import math
 import pandas as pd
 import streamlit as st
 
@@ -10,19 +11,28 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom Pepsi Styling & Themes
+# Custom Fresh Light Blue / Pepsi Corporate Theme
 st.markdown("""
 <style>
+    /* Fresh Light Blue App Background */
+    .stApp {
+        background: linear-gradient(180deg, #f0f7ff 0%, #e0f2fe 100%);
+        color: #0f172a;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    
+    /* Header Container - Premium Gradient */
     .header-container {
         display: flex;
         align-items: center;
         gap: 18px;
-        background: linear-gradient(135deg, #002244 0%, #004B93 60%, #C9082A 100%);
+        background: linear-gradient(135deg, #002b66 0%, #004B93 55%, #0284c7 100%);
         padding: 16px 24px;
-        border-radius: 12px;
+        border-radius: 14px;
         color: white;
         margin-bottom: 20px;
-        box-shadow: 0 4px 12px rgba(0, 34, 68, 0.15);
+        box-shadow: 0 6px 18px rgba(0, 75, 147, 0.22);
+        border: 1px solid rgba(255, 255, 255, 0.2);
     }
     .header-logo {
         width: 60px;
@@ -33,7 +43,7 @@ st.markdown("""
         display: flex;
         align-items: center;
         justify-content: center;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
     }
     .header-title {
         font-size: 26px;
@@ -44,81 +54,101 @@ st.markdown("""
     }
     .header-subtitle {
         font-size: 13px;
-        color: #e0e8f5;
+        color: #bae6fd;
         margin: 0;
     }
+    
+    /* Clean Light-Blue Metric Cards */
     .metric-card {
         background-color: #ffffff;
-        border-radius: 10px;
-        padding: 14px;
+        border-radius: 12px;
+        padding: 14px 18px;
         border-left: 5px solid #004B93;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.06);
-        transition: transform 0.15s ease-in-out;
+        border-top: 1px solid #bae6fd;
+        border-right: 1px solid #e2e8f0;
+        border-bottom: 1px solid #e2e8f0;
+        box-shadow: 0 3px 10px rgba(2, 132, 199, 0.08);
+        transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
     }
     .metric-card:hover {
         transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 75, 147, 0.16);
     }
     .metric-val { 
         font-size: 24px; 
         font-weight: 800; 
-        color: #002244; 
+        color: #003366; 
     }
     .metric-lbl { 
-        font-size: 12px; 
-        color: #555555; 
-        font-weight: 600; 
+        font-size: 11px; 
+        color: #475569; 
+        font-weight: 700; 
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        margin-top: 3px;
     }
     
-    /* Top & Bottom Leaderboard Cards */
+    /* Leaderboard Cards */
     .lead-card-top {
         background: #f0fdf4;
-        border: 1px solid #bbf7d0;
+        border: 1px solid #86efac;
         border-left: 6px solid #16a34a;
         padding: 12px 16px;
-        border-radius: 8px;
+        border-radius: 10px;
         margin-bottom: 10px;
+        box-shadow: 0 2px 6px rgba(22, 163, 74, 0.08);
     }
     .lead-card-bottom {
         background: #fef2f2;
-        border: 1px solid #fecaca;
+        border: 1px solid #fca5a5;
         border-left: 6px solid #dc2626;
         padding: 12px 16px;
-        border-radius: 8px;
+        border-radius: 10px;
         margin-bottom: 10px;
+        box-shadow: 0 2px 6px rgba(220, 38, 38, 0.08);
     }
     .lead-title {
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 800;
         text-transform: uppercase;
         letter-spacing: 0.5px;
-        margin-bottom: 4px;
+        margin-bottom: 3px;
     }
     .lead-name {
         font-size: 15px;
         font-weight: 800;
-        color: #111827;
+        color: #0f172a;
         margin-bottom: 2px;
     }
     .lead-stats {
         font-size: 12px;
         font-weight: 600;
-        color: #4b5563;
+        color: #334155;
     }
     
+    /* Modern Tabs Navigation */
     .stTabs [data-baseweb="tab-list"] {
         gap: 8px;
     }
     .stTabs [data-baseweb="tab"] {
-        font-weight: 600;
-        border-radius: 6px 6px 0px 0px;
-        padding: 8px 16px;
+        font-weight: 700;
+        border-radius: 8px 8px 0px 0px;
+        padding: 9px 18px;
+        color: #334155;
+        background-color: rgba(255, 255, 255, 0.6);
+        border: 1px solid #e2e8f0;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        background-color: #ffffff;
+        color: #004B93;
+        border-top: 3px solid #004B93;
+        border-bottom: none;
+        box-shadow: 0 -2px 6px rgba(0, 75, 147, 0.06);
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Pepsi Brand Header with Official SVG Logo
+# Pepsi Brand Header
 st.markdown("""
 <div class="header-container">
     <div class="header-logo">
@@ -131,7 +161,7 @@ st.markdown("""
     </div>
     <div>
         <h1 class="header-title">PEPSICO SALES PENETRATION TRACKER</h1>
-        <p class="header-subtitle">PJP Planned Coverage • Pre-Seller Productivity (SKU/Bill) • Outlet Missing Gap Analysis</p>
+        <p class="header-subtitle">PJP Planned Coverage • Pre-Seller Productivity (SKU/Bill) • Gap Closure Intelligence</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -226,10 +256,7 @@ def load_sales_data(sales_bytes):
     df = pd.read_excel(io.BytesIO(sales_bytes), skiprows=header_idx)
     df.columns = [str(c).strip() for c in df.columns]
 
-    # Explicit column detection
     dist_code_col = get_best_col(df.columns, ['distcode', 'distid', 'distributorcode', 'dist_code'])
-    
-    # Non-ID columns
     name_cols = [c for c in df.columns if not any(x in clean_col_str(c) for x in ['id', 'code'])]
     dist_name_col = get_best_col(name_cols, ['distname', 'distributor', 'dist'])
 
@@ -323,9 +350,7 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
         pjp_std['Dist_Code'] = df_pjp[d_code_col].apply(clean_id_str) if d_code_col else ""
         pjp_std['Raw_Dist_Name'] = df_pjp[d_name_col].astype(str).str.strip() if d_name_col else ""
         
-        # Link SDM and full formatted Dist_Name
         if df_sales_ref is not None:
-            # 1. Map Distributor Name
             sales_dist_map = df_sales_ref[df_sales_ref['Dist_Code'] != ""].drop_duplicates('Dist_Code').set_index('Dist_Code')['Dist_Name'].to_dict()
             pjp_std['Dist_Name'] = pjp_std['Dist_Code'].map(sales_dist_map)
             missing_dist = pjp_std['Dist_Name'].isna()
@@ -333,17 +358,14 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
                 lambda r: f"{r['Raw_Dist_Name']} - {r['Dist_Code']}" if r['Raw_Dist_Name'] and r['Dist_Code'] else r['Raw_Dist_Name'], axis=1
             )
             
-            # 2. Smart SDM Linkage: First by Booker_Name (because each booker has exactly 1 SDM)
             valid_sales = df_sales_ref[df_sales_ref['SDM/SDO/SDS'].astype(str).str.strip() != ""]
             booker_to_sdm = valid_sales.drop_duplicates('BOOKER_Name').set_index('BOOKER_Name')['SDM/SDO/SDS'].to_dict()
             outlet_to_sdm = valid_sales.drop_duplicates('Outlet_Code').set_index('Outlet_Code')['SDM/SDO/SDS'].to_dict()
             dist_to_sdm = valid_sales.drop_duplicates('Dist_Code').set_index('Dist_Code')['SDM/SDO/SDS'].to_dict()
 
             pjp_std['SDM/SDO/SDS'] = pjp_std['BOOKER_Name'].map(booker_to_sdm)
-            # Fallback 1: Outlet Code
             need_sdm = pjp_std['SDM/SDO/SDS'].isna()
             pjp_std.loc[need_sdm, 'SDM/SDO/SDS'] = pjp_std.loc[need_sdm, 'Outlet_Code'].map(outlet_to_sdm)
-            # Fallback 2: Dist Code
             need_sdm2 = pjp_std['SDM/SDO/SDS'].isna()
             pjp_std.loc[need_sdm2, 'SDM/SDO/SDS'] = pjp_std.loc[need_sdm2, 'Dist_Code'].map(dist_to_sdm).fillna("Unknown SDM")
         else:
@@ -352,7 +374,6 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
             )
             pjp_std['SDM/SDO/SDS'] = "Unknown SDM"
 
-        # Map Days (1 = Planned)
         for day in DAYS_LIST:
             d_found = get_best_col(df_pjp.columns, [day])
             if d_found:
@@ -372,7 +393,7 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
         return None
 
 # Sidebar File Uploaders
-st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pepsi_logo_2023.svg/300px-Pepsi_logo_2023.svg.png", width=110)
+st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pepsi_logo_2023.svg/300px-Pepsi_logo_2023.svg.png", width=115)
 st.sidebar.header("📁 Data Source Files")
 uploaded_sales = st.sidebar.file_uploader("1. Sales Raw Data (.xlsx)", type=["xlsx"])
 uploaded_target = st.sidebar.file_uploader("2. Targets File (.xlsx)", type=["xlsx"])
@@ -393,9 +414,9 @@ if uploaded_sales is not None:
         st.sidebar.info("ℹ️ Default Targets Active")
         
     if df_pjp_master is not None:
-        st.sidebar.success(f"🗺️ PJP Active: {len(df_pjp_master):,} Operational Planned Outlets")
+        st.sidebar.success(f"🗺️ PJP Active: {len(df_pjp_master):,} Operational Outlets")
     else:
-        st.sidebar.info("ℹ️ Mode: Billed Outlets Only (PJP upload karein planned universe k liye)")
+        st.sidebar.info("ℹ️ Mode: Billed Outlets Only")
 
     # Hierarchy Filters
     st.sidebar.markdown("---")
@@ -409,7 +430,6 @@ if uploaded_sales is not None:
     f_sales = df_sales if sel_dist == "All" else df_sales[df_sales['Dist_Name'] == sel_dist]
     f_pjp = df_pjp_master if (df_pjp_master is None or sel_dist == "All") else df_pjp_master[df_pjp_master['Dist_Name'] == sel_dist]
 
-    # Clean SDM list from both PJP and Sales
     sdm_source = f_pjp if (f_pjp is not None and f_pjp['SDM/SDO/SDS'].astype(str).str.strip().ne("").any()) else f_sales
     raw_sdms = list(sdm_source['SDM/SDO/SDS'].dropna().unique())
     clean_sdms = [str(x) for x in raw_sdms if str(x).strip() and str(x) != "Unknown SDM"]
@@ -437,11 +457,12 @@ if uploaded_sales is not None:
         if f_pjp is not None:
             f_pjp = f_pjp[f_pjp['PJP_Name'] == sel_pjp]
 
-    # Universe & Metrics Calculations
+    # Metrics Calculations
     billed_outlets = f_sales['Outlet_Code'].nunique()
     total_planned_outlets = f_pjp['Outlet_Code'].nunique() if f_pjp is not None else billed_outlets
     zero_sale_outlets = max(0, total_planned_outlets - billed_outlets)
     total_invoices = f_sales['INVOICE_NUMBER'].nunique() if 'INVOICE_NUMBER' in f_sales.columns else 0
+    overall_pen_pct = (billed_outlets / total_planned_outlets * 100) if total_planned_outlets > 0 else 0.0
     
     if total_invoices > 0:
         avg_sku_per_bill = f_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean()
@@ -460,29 +481,34 @@ if uploaded_sales is not None:
 
     for prod_group, target_pct in target_mapping.items():
         data = sku_agg.get(prod_group, {'Active_Outlets': 0, 'Total_Cases': 0.0})
-        buying_outlets = data['Active_Outlets']
-        cases_sold = data['Total_Cases']
+        productive_outlets = data['Active_Outlets']
 
-        actual_pen = (buying_outlets / total_planned_outlets) if total_planned_outlets > 0 else 0.0
+        actual_pen = (productive_outlets / total_planned_outlets) if total_planned_outlets > 0 else 0.0
         gap_pct = actual_pen - target_pct
+        
+        target_outlets_needed = math.ceil(total_planned_outlets * target_pct)
+        remaining_outlets = max(0, target_outlets_needed - productive_outlets)
         
         if gap_pct >= 0:
             status = "Hit 🎯 😊"
             hit_count += 1
+            rem_str = "0 (Achieved 🎯)"
         elif gap_pct >= -0.05:
             status = "Close ⚠️ 😕"
             close_count += 1
+            rem_str = f"{remaining_outlets:,} Outlets"
         else:
             status = "Far 😡"
             far_count += 1
+            rem_str = f"{remaining_outlets:,} Outlets"
 
         sku_records.append({
             "SKU / Group Name": prod_group,
             "Target %": f"{target_pct*100:.0f}%",
-            "Actual Outlets": buying_outlets,
+            "Productive Outlets": productive_outlets,
             "Actual Pen %": f"{actual_pen*100:.1f}%",
             "Gap %": f"{gap_pct*100:+.1f}%",
-            "Total Cases": round(cases_sold, 1),
+            "Remaining Outlets": rem_str,
             "Status": status
         })
 
@@ -491,17 +517,16 @@ if uploaded_sales is not None:
     # Top KPI Cards
     c1, c2, c3, c4 = st.columns(4)
     if f_pjp is not None:
-        c1.markdown(f'<div class="metric-card"><div class="metric-val">{total_planned_outlets:,}</div><div class="metric-lbl">Planned PJP Outlets <span style="font-size:11px;color:#c9082a;">[{billed_outlets} Billed | {zero_sale_outlets} Zero]</span></div></div>', unsafe_allow_html=True)
+        c1.markdown(f'<div class="metric-card"><div class="metric-val">{total_planned_outlets:,}</div><div class="metric-lbl">Planned Outlets <span style="font-size:11px;color:#dc2626;">[{billed_outlets} Billed | {zero_sale_outlets} Zero]</span></div></div>', unsafe_allow_html=True)
     else:
-        c1.markdown(f'<div class="metric-card"><div class="metric-val">{billed_outlets:,}</div><div class="metric-lbl">Buying Outlets (Billed)</div></div>', unsafe_allow_html=True)
+        c1.markdown(f'<div class="metric-card"><div class="metric-val">{billed_outlets:,}</div><div class="metric-lbl">Productive Outlets (Billed)</div></div>', unsafe_allow_html=True)
         
-    c2.markdown(f'<div class="metric-card"><div class="metric-val">{avg_sku_per_bill:.2f}</div><div class="metric-lbl">Avg SKU Per Bill</div></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="metric-card"><div class="metric-val">{hit_count} / {len(target_mapping)}</div><div class="metric-lbl">Target Achieved SKUs 🎯</div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="metric-card"><div class="metric-val">{(hit_count / len(target_mapping) * 100):.1f}%</div><div class="metric-lbl">SKU Hit Rate %</div></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="metric-card"><div class="metric-val">{overall_pen_pct:.1f}%</div><div class="metric-lbl">Overall Coverage Pen %</div></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="metric-card"><div class="metric-val">{avg_sku_per_bill:.2f}</div><div class="metric-lbl">Avg SKU Per Bill</div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="metric-card"><div class="metric-val">{hit_count} / {len(target_mapping)} ({(hit_count / len(target_mapping) * 100):.1f}%)</div><div class="metric-lbl">Target Achieved SKUs 🎯</div></div>', unsafe_allow_html=True)
 
-    # ------------------ ACCURATE TOP & BOTTOM SDM & DISTRIBUTORS ------------------
+    # ------------------ TOP & BOTTOM LEADERBOARD (RANKED BY PENETRATION %) ------------------
     sdm_performance = []
-    # Loop across ALL SDMs from Sales
     all_sdms = [s for s in df_sales['SDM/SDO/SDS'].dropna().unique() if str(s).strip() and str(s) != "Unknown SDM"]
     
     for s_name in all_sdms:
@@ -510,25 +535,35 @@ if uploaded_sales is not None:
             continue
             
         if df_pjp_master is not None and 'SDM/SDO/SDS' in df_pjp_master.columns and (df_pjp_master['SDM/SDO/SDS'] == s_name).any():
-            s_outlets = df_pjp_master[df_pjp_master['SDM/SDO/SDS'] == s_name]['Outlet_Code'].nunique()
+            s_planned = df_pjp_master[df_pjp_master['SDM/SDO/SDS'] == s_name]['Outlet_Code'].nunique()
         else:
-            s_outlets = s_sales['Outlet_Code'].nunique()
+            s_planned = s_sales['Outlet_Code'].nunique()
             
-        if s_outlets == 0:
+        s_billed = s_sales['Outlet_Code'].nunique()
+        if s_planned == 0:
             continue
             
+        s_pen_pct = (s_billed / s_planned) * 100
+        
         s_sku_bill = s_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if len(s_sales) > 0 else 0.0
         s_sku_grp = s_sales.groupby('Target_Product_Group', observed=True)['Outlet_Code'].nunique()
-        s_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (s_sku_grp.get(sku_k, 0) / s_outlets) >= tgt_v)
+        s_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (s_sku_grp.get(sku_k, 0) / s_planned) >= tgt_v)
         s_rate = (s_hit / len(target_mapping)) * 100
+        
         sdm_performance.append({
-            'Name': s_name, 'Outlets': s_outlets, 'SKU_Bill': s_sku_bill, 'Hit_Count': s_hit, 'Hit_Rate': s_rate
+            'Name': s_name, 
+            'Planned': s_planned,
+            'Billed': s_billed,
+            'Penetration_%': s_pen_pct,
+            'SKU_Bill': s_sku_bill, 
+            'Hit_Count': s_hit, 
+            'Hit_Rate': s_rate
         })
         
     if sdm_performance:
-        df_sdm_rank = pd.DataFrame(sdm_performance).sort_values(by=['Hit_Rate', 'SKU_Bill'], ascending=False)
+        df_sdm_rank = pd.DataFrame(sdm_performance).sort_values(by=['Penetration_%', 'Hit_Rate'], ascending=False)
     else:
-        df_sdm_rank = pd.DataFrame(columns=['Name', 'Outlets', 'SKU_Bill', 'Hit_Count', 'Hit_Rate'])
+        df_sdm_rank = pd.DataFrame(columns=['Name', 'Planned', 'Billed', 'Penetration_%', 'SKU_Bill', 'Hit_Count', 'Hit_Rate'])
 
     dist_performance = []
     all_dists = [d for d in df_sales['Dist_Name'].dropna().unique() if str(d).strip()]
@@ -539,29 +574,39 @@ if uploaded_sales is not None:
             continue
             
         if df_pjp_master is not None:
-            d_outlets = df_pjp_master[df_pjp_master['Dist_Name'] == d_name]['Outlet_Code'].nunique()
+            d_planned = df_pjp_master[df_pjp_master['Dist_Name'] == d_name]['Outlet_Code'].nunique()
         else:
-            d_outlets = d_sales['Outlet_Code'].nunique()
+            d_planned = d_sales['Outlet_Code'].nunique()
             
-        if d_outlets == 0:
+        d_billed = d_sales['Outlet_Code'].nunique()
+        if d_planned == 0:
             continue
             
+        d_pen_pct = (d_billed / d_planned) * 100
+        
         d_sku_bill = d_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if len(d_sales) > 0 else 0.0
         d_sku_grp = d_sales.groupby('Target_Product_Group', observed=True)['Outlet_Code'].nunique()
-        d_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (d_sku_grp.get(sku_k, 0) / d_outlets) >= tgt_v)
+        d_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (d_sku_grp.get(sku_k, 0) / d_planned) >= tgt_v)
         d_rate = (d_hit / len(target_mapping)) * 100
+        
         dist_performance.append({
-            'Name': d_name, 'Outlets': d_outlets, 'SKU_Bill': d_sku_bill, 'Hit_Count': d_hit, 'Hit_Rate': d_rate
+            'Name': d_name, 
+            'Planned': d_planned,
+            'Billed': d_billed,
+            'Penetration_%': d_pen_pct,
+            'SKU_Bill': d_sku_bill, 
+            'Hit_Count': d_hit, 
+            'Hit_Rate': d_rate
         })
         
     if dist_performance:
-        df_dist_rank = pd.DataFrame(dist_performance).sort_values(by=['Hit_Rate', 'SKU_Bill'], ascending=False)
+        df_dist_rank = pd.DataFrame(dist_performance).sort_values(by=['Penetration_%', 'Hit_Rate'], ascending=False)
     else:
-        df_dist_rank = pd.DataFrame(columns=['Name', 'Outlets', 'SKU_Bill', 'Hit_Count', 'Hit_Rate'])
+        df_dist_rank = pd.DataFrame(columns=['Name', 'Planned', 'Billed', 'Penetration_%', 'SKU_Bill', 'Hit_Count', 'Hit_Rate'])
 
     st.write("")
     
-    # Leaderboard Section
+    # Leaderboard Display
     if len(df_sdm_rank) > 0 or len(df_dist_rank) > 0:
         l_col1, l_col2, l_col3, l_col4 = st.columns(4)
         
@@ -571,17 +616,17 @@ if uploaded_sales is not None:
             with l_col1:
                 st.markdown(f"""
                 <div class="lead-card-top">
-                    <div class="lead-title" style="color: #16a34a;">🏆 Top SDM / SDO</div>
+                    <div class="lead-title" style="color: #16a34a;">🏆 Top SDM (Penetration)</div>
                     <div class="lead-name">{top_sdm['Name']}</div>
-                    <div class="lead-stats">Hit Rate: <b>{top_sdm['Hit_Rate']:.1f}%</b> ({top_sdm['Hit_Count']}/{len(target_mapping)} SKUs) | SKU/Bill: <b>{top_sdm['SKU_Bill']:.2f}</b></div>
+                    <div class="lead-stats">Penetration: <b>{top_sdm['Penetration_%']:.1f}%</b> ({top_sdm['Billed']}/{top_sdm['Planned']}) | Hit: <b>{top_sdm['Hit_Rate']:.1f}%</b></div>
                 </div>
                 """, unsafe_allow_html=True)
             with l_col2:
                 st.markdown(f"""
                 <div class="lead-card-bottom">
-                    <div class="lead-title" style="color: #dc2626;">🔻 Bottom SDM / SDO</div>
+                    <div class="lead-title" style="color: #dc2626;">🔻 Bottom SDM (Penetration)</div>
                     <div class="lead-name">{bot_sdm['Name']}</div>
-                    <div class="lead-stats">Hit Rate: <b>{bot_sdm['Hit_Rate']:.1f}%</b> ({bot_sdm['Hit_Count']}/{len(target_mapping)} SKUs) | SKU/Bill: <b>{bot_sdm['SKU_Bill']:.2f}</b></div>
+                    <div class="lead-stats">Penetration: <b>{bot_sdm['Penetration_%']:.1f}%</b> ({bot_sdm['Billed']}/{bot_sdm['Planned']}) | Hit: <b>{bot_sdm['Hit_Rate']:.1f}%</b></div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -593,7 +638,7 @@ if uploaded_sales is not None:
                 <div class="lead-card-top">
                     <div class="lead-title" style="color: #16a34a;">🥇 Top Distributor</div>
                     <div class="lead-name">{top_dist['Name']}</div>
-                    <div class="lead-stats">Hit Rate: <b>{top_dist['Hit_Rate']:.1f}%</b> ({top_dist['Hit_Count']}/{len(target_mapping)} SKUs) | Outlets: <b>{top_dist['Outlets']:,}</b></div>
+                    <div class="lead-stats">Penetration: <b>{top_dist['Penetration_%']:.1f}%</b> ({top_dist['Billed']}/{top_dist['Planned']}) | Hit: <b>{top_dist['Hit_Rate']:.1f}%</b></div>
                 </div>
                 """, unsafe_allow_html=True)
             with l_col4:
@@ -601,7 +646,7 @@ if uploaded_sales is not None:
                 <div class="lead-card-bottom">
                     <div class="lead-title" style="color: #dc2626;">⚠️ Bottom Distributor</div>
                     <div class="lead-name">{bot_dist['Name']}</div>
-                    <div class="lead-stats">Hit Rate: <b>{bot_dist['Hit_Rate']:.1f}%</b> ({bot_dist['Hit_Count']}/{len(target_mapping)} SKUs) | Outlets: <b>{bot_dist['Outlets']:,}</b></div>
+                    <div class="lead-stats">Penetration: <b>{bot_dist['Penetration_%']:.1f}%</b> ({bot_dist['Billed']}/{bot_dist['Planned']}) | Hit: <b>{bot_dist['Hit_Rate']:.1f}%</b></div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -615,7 +660,7 @@ if uploaded_sales is not None:
         "🔍 Outlets Missing SKU & Day Filter"
     ])
 
-    # TAB 1: SKU PENETRATION TABLE
+    # TAB 1: SKU PENETRATION TABLE (No Height Constraint -> All 18 SKUs Visible Without Inner Scroll)
     with tab1:
         st.subheader("Target vs Actual SKU Penetration")
         basis_note = f"Universe Base: **{total_planned_outlets:,} Planned Outlets**" + (f" ({zero_sale_outlets} Zero-Sale Included)" if f_pjp is not None else " (Billed Only)")
@@ -624,14 +669,16 @@ if uploaded_sales is not None:
         def color_status_rows(row):
             st_val = str(row['Status'])
             if "Hit" in st_val:
-                return ['background-color: #d4edda; color: #155724; font-weight: 500;'] * len(row)
+                return ['background-color: #dcfce7; color: #14532d; font-weight: 600; border-bottom: 1px solid #bbf7d0;'] * len(row)
             elif "Close" in st_val:
-                return ['background-color: #fff3cd; color: #856404; font-weight: 500;'] * len(row)
+                return ['background-color: #fef9c3; color: #713f12; font-weight: 600; border-bottom: 1px solid #fef08a;'] * len(row)
             else:
-                return ['background-color: #f8d7da; color: #721c24; font-weight: 500;'] * len(row)
+                return ['background-color: #fee2e2; color: #7f1d1d; font-weight: 600; border-bottom: 1px solid #fecaca;'] * len(row)
 
         styled_sku_df = df_sku_rep.style.apply(color_status_rows, axis=1)
-        st.dataframe(styled_sku_df, use_container_width=True, height=520)
+        # Dynamic height calculation so all 18 rows render completely without table scrolling
+        auto_table_height = (len(df_sku_rep) + 1) * 36 + 10
+        st.dataframe(styled_sku_df, use_container_width=True, height=auto_table_height)
 
     # TAB 2: PACK-WISE PENETRATION
     with tab_pack:
@@ -639,23 +686,24 @@ if uploaded_sales is not None:
         valid_packs = f_sales[f_sales['PKG_NAME'] != ""]
         if len(valid_packs) > 0:
             pack_agg = valid_packs.groupby('PKG_NAME', observed=True).agg(
-                Billed_Outlets=('Outlet_Code', 'nunique'),
+                Productive_Outlets=('Outlet_Code', 'nunique'),
                 Total_Cases=('Sales_Raw Cases', 'sum'),
                 Invoices=('INVOICE_NUMBER', 'nunique')
             ).reset_index()
 
-            pack_agg['Penetration %'] = ((pack_agg['Billed_Outlets'] / total_planned_outlets) * 100).round(1).astype(str) + "%"
-            pack_agg['Drop Size (Cases)'] = (pack_agg['Total_Cases'] / pack_agg['Billed_Outlets']).round(2)
-            pack_agg = pack_agg.sort_values(by='Billed_Outlets', ascending=False)
+            pack_agg['Penetration %'] = ((pack_agg['Productive_Outlets'] / total_planned_outlets) * 100).round(1).astype(str) + "%"
+            pack_agg['Drop Size (Cases)'] = (pack_agg['Total_Cases'] / pack_agg['Productive_Outlets']).round(2)
+            pack_agg = pack_agg.sort_values(by='Productive_Outlets', ascending=False)
 
-            st.dataframe(pack_agg, use_container_width=True, height=500)
+            pack_table_height = (len(pack_agg) + 1) * 36 + 10
+            st.dataframe(pack_agg, use_container_width=True, height=pack_table_height)
         else:
             st.info("Sales file me 'PKG_NAME' data dastiyab nahi hai.")
 
-    # TAB 3: BOOKER SCORECARD
+    # TAB 3: BOOKER SCORECARD (RANKED NUMBER-WISE BY PENETRATION %)
     with tab2:
-        st.subheader("👤 Booker / Pre-Seller Scorecard")
-        st.caption("Productivity, Route Coverage & Target Hit Rate Rollup")
+        st.subheader("👤 Booker / Pre-Seller (PSR) Scorecard")
+        st.caption("Ranked Number-Wise by Overall Penetration % (Highest to Lowest).")
 
         booker_rows = []
         booker_iter = f_pjp.groupby('BOOKER_Name', observed=True) if f_pjp is not None else f_sales.groupby('BOOKER_Name', observed=True)
@@ -671,12 +719,14 @@ if uploaded_sales is not None:
             if b_total_outlets == 0 and b_billed == 0:
                 continue
 
+            base_count = b_total_outlets if f_pjp is not None else b_billed
+            b_pen_pct = (b_billed / base_count * 100) if base_count > 0 else 0.0
+            
             b_sku_per_bill = b_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if len(b_sales) > 0 else 0.0
             
             b_achieved = 0
             b_sku_grp = b_sales.groupby('Target_Product_Group', observed=True)['Outlet_Code'].nunique()
             
-            base_count = b_total_outlets if f_pjp is not None else b_billed
             for sku_name, tgt in target_mapping.items():
                 if base_count > 0 and (b_sku_grp.get(sku_name, 0) / base_count) >= tgt:
                     b_achieved += 1
@@ -688,27 +738,30 @@ if uploaded_sales is not None:
                 'Distributor': dist,
                 'SDM': sdm,
                 'Booker Name': b_name,
-                'Total Planned Outlets': b_total_outlets if f_pjp is not None else b_billed,
-                'Billed Outlets': b_billed,
-                'Zero Sale Outlets': max(0, b_total_outlets - b_billed) if f_pjp is not None else 0,
+                'Total Planned Outlets': base_count,
+                'Productive Outlets': b_billed,
+                'Zero Sale Outlets': max(0, base_count - b_billed),
+                'Penetration %': round(b_pen_pct, 1),
                 'SKU Per Bill': round(b_sku_per_bill, 2),
                 'Targets Achieved': f"{b_achieved} / {len(target_mapping)}",
                 'Hit Rate %': round((b_achieved / len(target_mapping)) * 100, 1),
-                'Status': "Star ⭐" if b_achieved >= 10 else ("Good 👍" if b_achieved >= 6 else "Needs Focus ⚠️")
+                'Status': "Star ⭐" if b_pen_pct >= 80 else ("Good 👍" if b_pen_pct >= 60 else "Needs Focus ⚠️")
             })
 
-        df_booker_score = pd.DataFrame(booker_rows).sort_values(by='Hit Rate %', ascending=False)
+        df_booker_score = pd.DataFrame(booker_rows).sort_values(by=['Penetration %', 'Hit Rate %'], ascending=False).reset_index(drop=True)
+        df_booker_score.insert(0, 'Rank #', range(1, len(df_booker_score) + 1))
         
         def color_booker(row):
-            hr = row['Hit Rate %']
-            if hr >= 50.0:
-                return ['background-color: #d4edda; color: #155724; font-weight: 500;'] * len(row)
-            elif hr >= 30.0:
-                return ['background-color: #fff3cd; color: #856404; font-weight: 500;'] * len(row)
+            pen = row['Penetration %']
+            if pen >= 75.0:
+                return ['background-color: #dcfce7; color: #14532d; font-weight: 600;'] * len(row)
+            elif pen >= 50.0:
+                return ['background-color: #fef9c3; color: #713f12; font-weight: 600;'] * len(row)
             else:
-                return ['background-color: #f8d7da; color: #721c24; font-weight: 500;'] * len(row)
+                return ['background-color: #fee2e2; color: #7f1d1d; font-weight: 600;'] * len(row)
 
-        st.dataframe(df_booker_score.style.apply(color_booker, axis=1), use_container_width=True, height=500)
+        booker_table_height = (len(df_booker_score) + 1) * 36 + 10
+        st.dataframe(df_booker_score.style.apply(color_booker, axis=1), use_container_width=True, height=booker_table_height)
 
     # TAB 4: OUTLETS MISSING SKU & DAY FILTER
     with tab_outlets:
@@ -741,7 +794,6 @@ if uploaded_sales is not None:
         outlet_meta['Missing_Products_List'] = [d[2] for d in details]
         outlet_meta['Billing_Status'] = [d[3] for d in details]
 
-        # Filter Section with Day Filter
         f_col1, f_col2, f_col3, f_col4 = st.columns([1.5, 1.2, 1.2, 1.2])
         
         with f_col1:
@@ -754,7 +806,7 @@ if uploaded_sales is not None:
             
         with f_col3:
             missing_range = st.slider(
-                "⚠️ Missing SKUs (0-17):", 
+                "⚠️ Missing SKUs (0-18):", 
                 min_value=0, 
                 max_value=total_sku_count, 
                 value=(1, total_sku_count), 
