@@ -135,7 +135,6 @@ def map_product_group(pname):
         return '500 ML PET (CSD Combined)'
     return p
 
-# Extract Pack and Flavour Separately for Table Look
 def extract_pack_sku(full_name):
     p = str(full_name).strip()
     pack = "OTHER"
@@ -160,7 +159,6 @@ def extract_pack_sku(full_name):
     elif "500 ML" in p:
         pack = "500ML PET"
 
-    # SKU / Flavour detection
     if "PEPSI" in p.upper():
         sku = "PEPSI"
     elif "7-UP" in p.upper() or "7UP" in p.upper():
@@ -391,6 +389,10 @@ if uploaded_sales is not None:
     target_mapping = load_target_data(target_bytes)
     df_pjp_master = load_pjp_data(pjp_bytes, df_sales)
 
+    # Initialize filtered dataframes safely
+    f_sales = df_sales
+    f_pjp = df_pjp_master
+
     if uploaded_target is not None:
         st.sidebar.success(f"✅ Targets Active: {len(target_mapping)} SKUs")
     else:
@@ -402,15 +404,14 @@ if uploaded_sales is not None:
         st.sidebar.info("ℹ️ Mode: Billed Outlets Only")
 
     # Top Toolbar Like Friend's Dashboard [Unit Wise, SDM Wise, Route Wise]
-    base_hierarchy_df = df_pjp_master if df_pjp_master is not None else df_sales
-    
     t_col1, t_col2, t_col3, t_col4 = st.columns([1.2, 1.2, 2.5, 1.5])
     with t_col1:
         view_mode = st.radio("View Level:", ["SDM Wise", "Unit Wise", "Route Wise"], horizontal=True, label_visibility="collapsed")
     with t_col2:
         st.markdown("<div style='padding-top:6px;'><span style='background:#bfdbfe;color:#1e3a8a;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;'>⚡ SIZE: AUTO</span></div>", unsafe_allow_html=True)
     with t_col3:
-        sdm_source = f_pjp if (df_pjp_master is not None and df_pjp_master['SDM/SDO/SDS'].astype(str).str.strip().ne("").any()) else df_sales
+        # Fixed: look safely at df_pjp_master or df_sales
+        sdm_source = df_pjp_master if (df_pjp_master is not None and df_pjp_master['SDM/SDO/SDS'].astype(str).str.strip().ne("").any()) else df_sales
         raw_sdms = list(sdm_source['SDM/SDO/SDS'].dropna().unique())
         clean_sdms = [str(x) for x in raw_sdms if str(x).strip() and str(x) != "Unknown SDM"]
         sdm_list = ["All SDMs / Total"] + sorted(list(set(clean_sdms)))
@@ -418,7 +419,7 @@ if uploaded_sales is not None:
     with t_col4:
         st.markdown("<div style='padding-top:6px;text-align:right;'><span style='background:#dbeafe;color:#1d4ed8;padding:6px 12px;border-radius:6px;font-size:11px;font-weight:700;'>🔄 VS LAST READ</span></div>", unsafe_allow_html=True)
 
-    # Filter Sales & PJP
+    # Filter Sales & PJP after SDM Selection
     if sel_sdm != "All SDMs / Total":
         f_sales = df_sales[df_sales['SDM/SDO/SDS'] == sel_sdm]
         f_pjp = df_pjp_master[df_pjp_master['SDM/SDO/SDS'] == sel_sdm] if df_pjp_master is not None else None
@@ -458,7 +459,6 @@ if uploaded_sales is not None:
         Total_Cases=('Sales_Raw Cases', 'sum')
     ).to_dict(orient='index')
 
-    # Calculate Lagging Route for each SKU (Lowest penetration route)
     route_planned = f_pjp.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict() if f_pjp is not None else f_sales.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict()
     route_sku_billed = f_sales.groupby(['Target_Product_Group', 'PJP_Name'], observed=True)['Outlet_Code'].nunique().to_dict()
 
@@ -485,7 +485,6 @@ if uploaded_sales is not None:
             status = "x MISS ⚠️"
             rem_str = f"{remaining_outlets:,}"
 
-        # Find Lowest Route for this SKU (Lagging Route)
         lowest_rt = "N/A"
         lowest_rt_pct = 999.0
         for r_name, r_total in route_planned.items():
@@ -513,7 +512,6 @@ if uploaded_sales is not None:
             "VS LAST READ": pulse_str
         })
 
-    # Add Metric Bottom Row for SKU/Bill like the friend's report
     sku_bill_target = 5.0
     sku_bill_gap = avg_sku_per_bill - sku_bill_target
     sku_records.append({
@@ -530,7 +528,6 @@ if uploaded_sales is not None:
 
     df_sku_rep = pd.DataFrame(sku_records)
 
-    # 5 KPI Cards Row matching friend's dashboard
     sel_display_name = sel_sdm if sel_sdm != "All SDMs / Total" else "OVERALL ALL SDMS"
     achieved_score = int(hit_count * 10)
     total_possible_score = len(target_mapping) * 10
@@ -566,7 +563,6 @@ if uploaded_sales is not None:
     </div>
     """, unsafe_allow_html=True)
 
-    # Modern Navigation Tabs
     tab1, tab_pack, tab2, tab_outlets = st.tabs([
         "📋 SKU Target Summary Table", 
         "📦 Pack-Wise Penetration",
@@ -574,7 +570,6 @@ if uploaded_sales is not None:
         "🔍 Outlets Missing SKU & Day Filter"
     ])
 
-    # TAB 1: EXACT REPLICA OF FRIEND'S SUMMARY TABLE
     with tab1:
         st.markdown("""
         <div class="tbl-header-bar">
@@ -602,7 +597,6 @@ if uploaded_sales is not None:
         auto_table_height = (len(df_sku_rep) + 1) * 36 + 10
         st.dataframe(styled_sku_df, use_container_width=True, height=auto_table_height)
 
-    # TAB 2: PACK-WISE PENETRATION
     with tab_pack:
         st.subheader("📦 Overall Pack-Wise Penetration")
         valid_packs = f_sales[f_sales['PKG_NAME'] != ""]
@@ -622,7 +616,6 @@ if uploaded_sales is not None:
         else:
             st.info("Sales file me 'PKG_NAME' data dastiyab nahi hai.")
 
-    # TAB 3: BOOKER SCORECARD
     with tab2:
         st.subheader("👤 Booker / Pre-Seller (PSR) Scorecard")
         st.caption("Ranked by Overall Penetration % (Highest to Lowest).")
@@ -684,7 +677,6 @@ if uploaded_sales is not None:
         booker_table_height = (len(df_booker_score) + 1) * 36 + 10
         st.dataframe(df_booker_score.style.apply(color_booker, axis=1), use_container_width=True, height=booker_table_height)
 
-    # TAB 4: OUTLETS MISSING SKU & DAY FILTER
     with tab_outlets:
         st.subheader("🔍 Outlets Missing SKU Gap Analysis & Day-Wise Visit Plan")
         st.caption("PJP Planned days, specific pack purchases, aur zero-sale outlets ko filter karein.")
