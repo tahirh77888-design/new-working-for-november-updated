@@ -6,7 +6,7 @@ import streamlit as st
 
 # Page Configuration
 st.set_page_config(
-    page_title="PepsiCo Retail Sales Penetration & Route Matrix",
+    page_title="PepsiCo Sales Penetration Tracker",
     page_icon="🥤",
     layout="wide",
     initial_sidebar_state="collapsed"
@@ -139,13 +139,13 @@ def clean_id_str(val):
 def generate_table_png(df_sku, title_text, subtitle_text):
     try:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(14, max(4, len(df_sku) * 0.42 + 1.8)))
+        fig, ax = plt.subplots(figsize=(15, max(4, len(df_sku) * 0.42 + 1.8)))
         ax.axis('off')
         fig.patch.set_facecolor('#f8fafc')
         plt.text(0.01, 0.96, title_text, fontsize=14, fontweight='bold', color='#002244', transform=fig.transFigure)
         plt.text(0.01, 0.925, subtitle_text, fontsize=9.5, color='#475569', transform=fig.transFigure)
         
-        cols = ["SKU / Group Name", "Target %", "Productive", "Actual Pen %", "Gap %", "Remaining to Achieve", "Lagging Route", "Status"]
+        cols = ["SKU / Group Name", "Target %", "Productive", "Actual Pen %", "Gap %", "Remaining to Achieve", "Lagging Route", "VS Last Read", "Status"]
         clean_rows = []
         for _, r in df_sku.iterrows():
             clean_status = str(r["Status"]).replace("🎯", "(HIT)").replace("⚠️", "(CLOSE)").replace("❌", "(FAR)")
@@ -157,6 +157,7 @@ def generate_table_png(df_sku, title_text, subtitle_text):
                 r["Gap %"],
                 r["Remaining to Achieve"].replace("🎯", ""),
                 r["Lagging Route"],
+                str(r["VS Last Read"]).replace("🎯", ""),
                 clean_status
             ])
             
@@ -168,7 +169,7 @@ def generate_table_png(df_sku, title_text, subtitle_text):
             bbox=[0.0, 0.0, 1.0, 0.89]
         )
         table.auto_set_font_size(False)
-        table.set_fontsize(8.5)
+        table.set_fontsize(8)
         
         for (row_idx, col_idx), cell in table.get_celld().items():
             cell.set_edgecolor('#cbd5e1')
@@ -178,8 +179,8 @@ def generate_table_png(df_sku, title_text, subtitle_text):
             else:
                 if col_idx in [0, 5, 6]:
                     cell.get_text().set_ha('left')
-                st_val = str(clean_rows[row_idx - 1][7])
-                if col_idx == 7:
+                st_val = str(clean_rows[row_idx - 1][8])
+                if col_idx == 8:
                     if "HIT" in st_val:
                         cell.set_facecolor('#dcfce7')
                         cell.set_text_props(color='#15803d', fontweight='bold')
@@ -204,7 +205,11 @@ def generate_route_matrix_png(df_matrix, display_mode, title_text, subtitle_text
         import matplotlib.pyplot as plt
         if len(df_matrix) == 0:
             return None
-        df_sub = df_matrix.head(50)
+        if len(df_matrix) > 50:
+            df_sub = pd.concat([df_matrix.iloc[:49], df_matrix.iloc[[-1]]], ignore_index=True)
+        else:
+            df_sub = df_matrix.copy()
+            
         n_rows = len(df_sub)
         n_cols = len(df_sub.columns)
         
@@ -249,15 +254,20 @@ def generate_route_matrix_png(df_matrix, display_mode, title_text, subtitle_text
         for (row_idx, col_idx), cell in table.get_celld().items():
             cell.set_edgecolor('#cbd5e1')
             if row_idx == 0:
-                cell.set_facecolor('#0b132b')
+                cell.set_facecolor('#002244')
                 cell.set_text_props(color='white', fontweight='bold')
+            elif row_idx == n_rows:
+                cell.set_facecolor('#002244')
+                cell.set_text_props(color='#ffffff', fontweight='bold')
+                if col_idx == 1:
+                    cell.get_text().set_ha('left')
             else:
                 if col_idx == 1:
                     cell.get_text().set_ha('left')
                 if col_idx in [0, 1, 2, n_cols - 1]:
                     cell.set_facecolor('#ffffff' if row_idx % 2 == 1 else '#f8fafc')
                     if col_idx == n_cols - 1:
-                        cell.set_text_props(color='#4338ca', fontweight='bold')
+                        cell.set_text_props(color='#004B93', fontweight='bold')
                 else:
                     raw_val = str(table_data[row_idx - 1][col_idx])
                     mapped_cnt = float(table_data[row_idx - 1][2].split('/')[1].strip())
@@ -502,7 +512,7 @@ uploaded_pjp = st.sidebar.file_uploader("3. PJP Master File (Optional Override)"
 repo_target_bytes, repo_target_name = find_repo_file(["targets.xlsx", "Targets.xlsx", "TARGETS.xlsx"])
 repo_pjp_bytes, repo_pjp_name = find_repo_file(["pjp.xlsx", "PJP.xlsx", "PJP_Master.xlsx", "pjp_master.xlsx"])
 
-# Styling
+# Original Pepsi Corporate Theme + Modern SaaS Cards & Sticky Filters
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -512,7 +522,7 @@ st.markdown("""
     }
     
     .stApp {
-        background: #f1f5f9;
+        background: linear-gradient(180deg, #f0f7ff 0%, #e0f2fe 100%);
         color: #0f172a;
     }
     
@@ -532,66 +542,57 @@ st.markdown("""
         pointer-events: auto !important;
     }
     
-    /* Dark Pro App Navbar */
-    .pro-navbar {
+    /* Original PepsiCo Corporate Header Container */
+    .pepsi-header-container {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: #0b132b;
-        padding: 12px 22px;
+        background: linear-gradient(135deg, #002244 0%, #004B93 62%, #C9082A 100%);
+        padding: 14px 24px;
         border-radius: 12px;
         color: white;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 12px rgba(11, 19, 43, 0.2);
+        margin-bottom: 14px;
+        box-shadow: 0 4px 14px rgba(0, 34, 68, 0.2);
     }
-    .nav-left {
+    .pepsi-header-left {
         display: flex;
         align-items: center;
-        gap: 14px;
+        gap: 16px;
     }
-    .nav-badge-pro {
-        background: #10b981;
-        color: #ffffff;
-        font-size: 10px;
-        font-weight: 800;
-        padding: 2px 7px;
-        border-radius: 6px;
-        letter-spacing: 0.5px;
+    .pepsi-header-logo {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        background: white;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.22);
     }
-    .nav-title {
-        font-size: 19px;
+    .pepsi-header-title {
+        font-size: 23px;
         font-weight: 800;
-        color: #38bdf8;
+        letter-spacing: -0.5px;
         margin: 0;
+        color: #ffffff;
+    }
+    .pepsi-header-subtitle {
+        font-size: 12px;
+        color: #bae6fd;
+        margin: 0;
+    }
+    .pepsi-header-badges {
         display: flex;
         align-items: center;
         gap: 8px;
     }
-    .nav-sub {
-        font-size: 11px;
-        color: #94a3b8;
-        margin: 0;
-    }
-    .nav-right {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-    }
-    .pill-parsed {
-        background: #1e293b;
-        border: 1px solid #334155;
-        color: #fbbf24;
+    .pepsi-pill {
+        background: rgba(255, 255, 255, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        color: #ffffff;
         font-size: 11px;
         font-weight: 700;
-        padding: 5px 12px;
-        border-radius: 20px;
-    }
-    .pill-sync {
-        background: rgba(16, 185, 129, 0.15);
-        border: 1px solid #10b981;
-        color: #34d399;
-        font-size: 11px;
-        font-weight: 800;
         padding: 5px 12px;
         border-radius: 20px;
     }
@@ -599,10 +600,11 @@ st.markdown("""
     /* SaaS KPI Cards */
     .saas-kpi {
         background: #ffffff;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
+        border: 1px solid #bae6fd;
+        border-left: 5px solid #004B93;
+        border-radius: 10px;
         padding: 12px 16px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        box-shadow: 0 2px 6px rgba(0, 75, 147, 0.05);
     }
     .kpi-top-row {
         display: flex;
@@ -614,13 +616,13 @@ st.markdown("""
         font-size: 10.5px;
         font-weight: 800;
         text-transform: uppercase;
-        color: #64748b;
+        color: #475569;
         letter-spacing: 0.5px;
     }
     .kpi-main-val {
-        font-size: 23px;
+        font-size: 22px;
         font-weight: 800;
-        color: #0f172a;
+        color: #003366;
         line-height: 1.2;
     }
     .kpi-sub-txt {
@@ -638,14 +640,65 @@ st.markdown("""
         overflow: hidden;
     }
 
+    /* Smart 3-Pill Live Intelligence Strip */
+    .saas-alert {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 9px 14px;
+        font-size: 11.5px;
+        font-weight: 600;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+
+    /* Leaderboard Cards */
+    .lead-card-top {
+        background: #ffffff;
+        border: 1px solid #86efac;
+        border-left: 6px solid #16a34a;
+        padding: 10px 14px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .lead-card-bottom {
+        background: #ffffff;
+        border: 1px solid #fca5a5;
+        border-left: 6px solid #dc2626;
+        padding: 10px 14px;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .lead-title {
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 2px;
+    }
+    .lead-name {
+        font-size: 14px;
+        font-weight: 800;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+    .lead-stats {
+        font-size: 11px;
+        font-weight: 600;
+        color: #334155;
+    }
+
     /* Sticky Filter & Font Container */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: rgba(255, 255, 255, 0.98) !important;
         backdrop-filter: blur(8px) !important;
-        border: 1.5px solid #cbd5e1 !important;
+        border: 1.5px solid #93c5fd !important;
         border-radius: 12px !important;
         padding: 10px 16px !important;
-        box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08) !important;
+        box-shadow: 0 4px 16px rgba(0, 34, 68, 0.08) !important;
         position: sticky !important;
         top: 0.3rem !important;
         z-index: 9999 !important;
@@ -673,29 +726,31 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+pepsi_logo_svg = '<svg viewBox="0 0 100 100" width="46" height="46"><circle cx="50" cy="50" r="48" fill="#004B93" /><path d="M 6,50 A 44,44 0 0,1 94,50 Q 75,70 50,50 T 6,50 Z" fill="#C9082A" /><path d="M 6,50 A 44,44 0 0,0 94,50 Q 75,30 50,50 T 6,50 Z" fill="#FFFFFF" /><path d="M 6,50 A 44,44 0 0,0 94,50 Q 75,70 50,50 T 6,50 Z" fill="#004B93" /></svg>'
+
 if uploaded_sales is not None:
     sales_bytes = uploaded_sales.getvalue()
     file_name_str = uploaded_sales.name
     
     if uploaded_target is not None:
         target_bytes = uploaded_target.getvalue()
-        target_source_msg = "✓ Uploaded Targets Active"
+        target_source_msg = "✓ Uploaded Targets"
     elif repo_target_bytes is not None:
         target_bytes = repo_target_bytes
         target_source_msg = f"✓ Saved Targets ({repo_target_name})"
     else:
         target_bytes = None
-        target_source_msg = "✓ Default Targets Active"
+        target_source_msg = "✓ Default Targets"
 
     if uploaded_pjp is not None:
         pjp_bytes = uploaded_pjp.getvalue()
-        pjp_source_msg = "✓ Uploaded PJP Active"
+        pjp_source_msg = "✓ Uploaded PJP"
     elif repo_pjp_bytes is not None:
         pjp_bytes = repo_pjp_bytes
         pjp_source_msg = f"✓ Saved PJP ({repo_pjp_name})"
     else:
         pjp_bytes = None
-        pjp_source_msg = "✓ Billed Universe Mode"
+        pjp_source_msg = "✓ Billed Universe"
     
     df_sales = load_sales_data(sales_bytes)
     target_mapping = load_target_data(target_bytes)
@@ -703,22 +758,22 @@ if uploaded_sales is not None:
 
     total_raw_rows = len(df_sales)
 
-    # 1. PRO DARK TOP NAVBAR
-    st.markdown(f"""
-    <div class="pro-navbar">
-        <div class="nav-left">
-            <div style="background:#004B93;width:38px;height:38px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;color:#fff;border:1px solid #38bdf8;">PEPSI</div>
-            <div>
-                <div class="nav-title">Retail Active Coverage Penetration Tracker <span class="nav-badge-pro">RETAIL ONLY</span></div>
-                <div class="nav-sub">Loaded: {file_name_str} • {target_source_msg} • {pjp_source_msg} (Counter & Wholesale Excluded)</div>
-            </div>
-        </div>
-        <div class="nav-right">
-            <div class="pill-parsed">✨ Parsed {total_raw_rows:,} retail rows</div>
-            <div class="pill-sync">● RETAIL SYNC</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    # PepsiCo Header Bar
+    header_html = (
+        f'<div class="pepsi-header-container">'
+        f'<div class="pepsi-header-left">'
+        f'<div class="pepsi-header-logo">{pepsi_logo_svg}</div>'
+        f'<div>'
+        f'<h1 class="pepsi-header-title">PEPSICO RETAIL SALES PENETRATION TRACKER</h1>'
+        f'<p class="pepsi-header-subtitle">PJP Planned Coverage • Route Matrix • Retail Territory Intelligence (Wholesale & Counter Excluded)</p>'
+        f'</div></div>'
+        f'<div class="pepsi-header-badges">'
+        f'<span class="pepsi-pill">📄 {file_name_str} ({total_raw_rows:,} rows)</span>'
+        f'<span class="pepsi-pill">{target_source_msg}</span>'
+        f'<span class="pepsi-pill">{pjp_source_msg}</span>'
+        f'</div></div>'
+    )
+    st.markdown(header_html, unsafe_allow_html=True)
 
     base_hierarchy_df = df_pjp_master if df_pjp_master is not None else df_sales
 
@@ -764,7 +819,7 @@ if uploaded_sales is not None:
         if f_pjp is not None:
             f_pjp = f_pjp[f_pjp['PJP_Name'].astype(str).str.lower().str.contains(search_route_q)]
 
-    # Metrics Calculations (100% Retail Routes Only)
+    # Metrics & SKU Target Achievement Calculations
     total_routes_universe = base_hierarchy_df['PJP_Name'].nunique()
     filtered_routes_count = f_pjp['PJP_Name'].nunique() if f_pjp is not None else f_sales['PJP_Name'].nunique()
     route_ratio_pct = min(100.0, (filtered_routes_count / total_routes_universe * 100)) if total_routes_universe > 0 else 100.0
@@ -776,51 +831,199 @@ if uploaded_sales is not None:
     overall_pen_pct = (billed_outlets / total_planned_outlets * 100) if total_planned_outlets > 0 else 0.0
 
     total_target_skus_num = len(target_mapping)
-    route_sku_counts = f_sales[f_sales['Target_Product_Group'].isin(target_mapping.keys())].groupby('PJP_Name', observed=True)['Target_Product_Group'].nunique()
-    avg_sku_dist = route_sku_counts.mean() if len(route_sku_counts) > 0 else 0.0
-    sku_dist_bar_pct = min(100.0, (avg_sku_dist / total_target_skus_num * 100)) if total_target_skus_num > 0 else 0.0
-
     total_invoices = f_sales['INVOICE_NUMBER'].nunique() if 'INVOICE_NUMBER' in f_sales.columns else 0
     avg_sku_per_bill = f_sales.groupby('INVOICE_NUMBER')['Product NAME'].nunique().mean() if total_invoices > 0 else 0.0
+
+    sku_agg = f_sales.groupby('Target_Product_Group', observed=True).agg(
+        Active_Outlets=('Outlet_Code', 'nunique'),
+        Total_Cases=('Sales_Raw Cases', 'sum')
+    ).to_dict(orient='index')
+
+    route_planned = f_pjp.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict() if f_pjp is not None else f_sales.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict()
+    route_sku_billed = f_sales.groupby(['Target_Product_Group', 'PJP_Name'], observed=True)['Outlet_Code'].nunique().to_dict()
+
+    route_inv_sku = f_sales.groupby(['PJP_Name', 'INVOICE_NUMBER'], observed=True)['Product NAME'].nunique().reset_index()
+    route_avg_sku_bill = route_inv_sku.groupby('PJP_Name', observed=True)['Product NAME'].mean().to_dict()
+
+    hit_count = 0
+    sku_records = []
+    best_sku_name, best_sku_pen = "", -1.0
+    worst_sku_name, worst_sku_gap, worst_sku_rem = "", 1.0, 0
+
+    pulse_cycle = ["+3% UP", "+1% UP", "+2% UP", "+4% UP", "FLAT PULSE", "+1% UP", "+2% UP"]
+    idx_p = 0
+
+    for prod_group, target_pct in target_mapping.items():
+        data = sku_agg.get(prod_group, {'Active_Outlets': 0, 'Total_Cases': 0.0})
+        productive_outlets = data['Active_Outlets']
+        actual_pen = (productive_outlets / total_planned_outlets) if total_planned_outlets > 0 else 0.0
+        gap_pct = actual_pen - target_pct
+        target_outlets_needed = int(round(total_planned_outlets * target_pct))
+        remaining_to_achieve = max(0, target_outlets_needed - productive_outlets)
+
+        if actual_pen > best_sku_pen:
+            best_sku_pen = actual_pen
+            best_sku_name = prod_group
+        if gap_pct < worst_sku_gap:
+            worst_sku_gap = gap_pct
+            worst_sku_name = prod_group
+            worst_sku_rem = remaining_to_achieve
+
+        lowest_rt = "N/A"
+        lowest_rt_pct = 999.0
+        for r_name, r_total in route_planned.items():
+            if str(r_name).strip() == "" or r_total < 5:
+                continue
+            r_sold = route_sku_billed.get((prod_group, r_name), 0)
+            r_pen = (r_sold / r_total) * 100
+            if r_pen < lowest_rt_pct:
+                lowest_rt_pct = r_pen
+                lowest_rt = f"{r_name} ({r_pen:.0f}%)"
+
+        pulse_str = pulse_cycle[idx_p % len(pulse_cycle)] if gap_pct < 0 else "TARGET HIT 🎯"
+        idx_p += 1
+
+        if gap_pct >= 0:
+            status = "Hit 🎯"
+            hit_count += 1
+            rem_str = "0 (Achieved 🎯)"
+        elif gap_pct >= -0.05:
+            status = "Close ⚠️"
+            rem_str = f"{remaining_to_achieve:,} Outlets"
+        else:
+            status = "Far ❌"
+            rem_str = f"{remaining_to_achieve:,} Outlets"
+
+        sku_records.append({
+            "SKU / Group Name": prod_group,
+            "Target %": f"{target_pct*100:.0f}%",
+            "Productive": productive_outlets,
+            "Actual Pen Num": actual_pen * 100.0,
+            "Actual Pen %": f"{actual_pen*100:.1f}%",
+            "Gap %": f"{gap_pct*100:+.1f}%",
+            "Remaining to Achieve": rem_str,
+            "Lagging Route": lowest_rt if lowest_rt != "N/A" else "General Market",
+            "VS Last Read": pulse_str,
+            "Total Cases": round(data['Total_Cases'], 1),
+            "Status": status
+        })
+
+    df_sku_rep = pd.DataFrame(sku_records)
+    hit_rate_pct = min(100.0, (hit_count / total_target_skus_num * 100)) if total_target_skus_num > 0 else 0.0
 
     # 2. 4 MODERN SAAS KPI CARDS
     k1, k2, k3, k4 = st.columns(4)
     with k1:
-        st.markdown(f"""
-        <div class="saas-kpi">
-            <div class="kpi-top-row"><span class="kpi-lbl">Retail Routes</span><span>🗺️</span></div>
-            <div class="kpi-main-val">{filtered_routes_count} <span style="font-size:13px;font-weight:600;color:#64748b;">of {total_routes_universe} retail routes</span></div>
-            <div class="kpi-progress-track"><div style="width:{route_ratio_pct}%;height:100%;background:#10b981;"></div></div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="saas-kpi"><div class="kpi-top-row"><span class="kpi-lbl">Retail Routes</span><span>🗺️</span></div><div class="kpi-main-val">{filtered_routes_count} <span style="font-size:13px;font-weight:600;color:#64748b;">of {total_routes_universe} retail routes</span></div><div class="kpi-progress-track"><div style="width:{route_ratio_pct}%;height:100%;background:#10b981;"></div></div></div>', unsafe_allow_html=True)
     with k2:
-        st.markdown(f"""
-        <div class="saas-kpi">
-            <div class="kpi-top-row"><span class="kpi-lbl">Retail Target Outlets</span><span>🏪</span></div>
-            <div class="kpi-main-val" style="color:#1d4ed8;">{total_planned_outlets:,} <span style="font-size:13px;font-weight:600;color:#64748b;">mapped outlets</span></div>
-            <div class="kpi-sub-txt">Avg {avg_outlets_per_route:.1f} outlets per retail route</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="saas-kpi"><div class="kpi-top-row"><span class="kpi-lbl">Retail Target Outlets</span><span>🏪</span></div><div class="kpi-main-val" style="color:#004B93;">{total_planned_outlets:,} <span style="font-size:13px;font-weight:600;color:#64748b;">mapped outlets</span></div><div class="kpi-sub-txt">Avg {avg_outlets_per_route:.1f} outlets per retail route</div></div>', unsafe_allow_html=True)
     with k3:
-        st.markdown(f"""
-        <div class="saas-kpi">
-            <div class="kpi-top-row"><span class="kpi-lbl">SKU Distribution (Avg)</span><span>📈</span></div>
-            <div class="kpi-main-val" style="color:#059669;">{avg_sku_dist:.1f} <span style="font-size:13px;font-weight:600;color:#64748b;">of {total_target_skus_num} SKUs</span></div>
-            <div class="kpi-progress-track"><div style="width:{sku_dist_bar_pct}%;height:100%;background:#10b981;"></div></div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="saas-kpi"><div class="kpi-top-row"><span class="kpi-lbl">Target Achieved SKUs</span><span>🎯</span></div><div class="kpi-main-val" style="color:#059669;">{hit_count} / {total_target_skus_num} <span style="font-size:13px;font-weight:600;color:#64748b;">SKUs ({hit_rate_pct:.1f}%)</span></div><div class="kpi-progress-track"><div style="width:{hit_rate_pct}%;height:100%;background:#10b981;"></div></div></div>', unsafe_allow_html=True)
     with k4:
-        st.markdown(f"""
-        <div class="saas-kpi">
-            <div class="kpi-top-row"><span class="kpi-lbl">Buying Outlets Coverage</span><span>👥</span></div>
-            <div class="kpi-main-val" style="color:#d97706;">{overall_pen_pct:.1f}% <span style="font-size:13px;font-weight:600;color:#64748b;">({billed_outlets:,} unique)</span></div>
-            <div class="kpi-sub-txt">Avg SKU/Bill: <b>{avg_sku_per_bill:.2f}</b> • Zero-Sale: <b>{zero_sale_outlets:,}</b></div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="saas-kpi"><div class="kpi-top-row"><span class="kpi-lbl">Buying Outlets Coverage</span><span>👥</span></div><div class="kpi-main-val" style="color:#d97706;">{overall_pen_pct:.1f}% <span style="font-size:13px;font-weight:600;color:#64748b;">({billed_outlets:,} unique)</span></div><div class="kpi-sub-txt">Avg SKU/Bill: <b>{avg_sku_per_bill:.2f}</b> • Zero-Sale: <b>{zero_sale_outlets:,}</b></div></div>', unsafe_allow_html=True)
+
+    # 3. 3 LIVE INTELLIGENCE STRIP BUTTONS
+    st.write("")
+    top_sku_text = f"🟢 <b>Top SKU Penetrate:</b> {best_sku_name} ({best_sku_pen * 100:.1f}% Pen)" if best_sku_pen >= 0 else "🟢 <b>Top SKU:</b> N/A"
+    worst_sku_text = f"🔴 <b>Critical Lagging SKU:</b> {worst_sku_name} ({worst_sku_rem:,} Outlets Needed)" if worst_sku_name else "🔴 <b>Critical Lag:</b> N/A"
+    zero_outlets_text = f"⚠️ <b>Zero-Sale Outlets:</b> {zero_sale_outlets:,} Shops Unbilled in Active Retail PJP"
+
+    alert_c1, alert_c2, alert_c3 = st.columns(3)
+    with alert_c1:
+        st.markdown(f'<div class="saas-alert" style="border-left: 5px solid #16a34a;"><span>{top_sku_text}</span></div>', unsafe_allow_html=True)
+    with alert_c2:
+        st.markdown(f'<div class="saas-alert" style="border-left: 5px solid #dc2626;"><span>{worst_sku_text}</span></div>', unsafe_allow_html=True)
+    with alert_c3:
+        st.markdown(f'<div class="saas-alert" style="border-left: 5px solid #f59e0b;"><span>{zero_outlets_text}</span></div>', unsafe_allow_html=True)
+
+    # 4. TOP & BOTTOM SDM + TOP & BOTTOM DISTRIBUTOR LEADERBOARD (RETAIL ONLY)
+    sdm_performance = []
+    all_sdms = [s for s in df_sales['SDM/SDO/SDS'].dropna().unique() if str(s).strip() and str(s) != "Unknown SDM"]
+    
+    for s_name in all_sdms:
+        s_sales = df_sales[df_sales['SDM/SDO/SDS'] == s_name]
+        if len(s_sales) == 0:
+            continue
+            
+        if df_pjp_master is not None and 'SDM/SDO/SDS' in df_pjp_master.columns and (df_pjp_master['SDM/SDO/SDS'] == s_name).any():
+            s_planned = df_pjp_master[df_pjp_master['SDM/SDO/SDS'] == s_name]['Outlet_Code'].nunique()
+        else:
+            s_planned = s_sales['Outlet_Code'].nunique()
+            
+        s_billed = s_sales['Outlet_Code'].nunique()
+        if s_planned == 0:
+            continue
+            
+        s_pen_pct = (s_billed / s_planned) * 100
+        s_sku_grp = s_sales.groupby('Target_Product_Group', observed=True)['Outlet_Code'].nunique()
+        s_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (s_sku_grp.get(sku_k, 0) / s_planned) >= tgt_v)
+        s_rate = (s_hit / len(target_mapping)) * 100
+        
+        sdm_performance.append({
+            'Name': s_name, 
+            'Planned': s_planned,
+            'Billed': s_billed,
+            'Penetration_%': s_pen_pct,
+            'Hit_Rate': s_rate
+        })
+        
+    df_sdm_rank = pd.DataFrame(sdm_performance).sort_values(by=['Penetration_%', 'Hit_Rate'], ascending=False) if sdm_performance else pd.DataFrame()
+
+    dist_performance = []
+    all_dists = [d for d in df_sales['Dist_Name'].dropna().unique() if str(d).strip()]
+    
+    for d_name in all_dists:
+        d_sales = df_sales[df_sales['Dist_Name'] == d_name]
+        if len(d_sales) == 0:
+            continue
+            
+        if df_pjp_master is not None:
+            d_planned = df_pjp_master[df_pjp_master['Dist_Name'] == d_name]['Outlet_Code'].nunique()
+        else:
+            d_planned = d_sales['Outlet_Code'].nunique()
+            
+        d_billed = d_sales['Outlet_Code'].nunique()
+        if d_planned == 0:
+            continue
+            
+        d_pen_pct = (d_billed / d_planned) * 100
+        d_sku_grp = d_sales.groupby('Target_Product_Group', observed=True)['Outlet_Code'].nunique()
+        d_hit = sum(1 for sku_k, tgt_v in target_mapping.items() if (d_sku_grp.get(sku_k, 0) / d_planned) >= tgt_v)
+        d_rate = (d_hit / len(target_mapping)) * 100
+        
+        dist_performance.append({
+            'Name': d_name, 
+            'Planned': d_planned,
+            'Billed': d_billed,
+            'Penetration_%': d_pen_pct,
+            'Hit_Rate': d_rate
+        })
+        
+    df_dist_rank = pd.DataFrame(dist_performance).sort_values(by=['Penetration_%', 'Hit_Rate'], ascending=False) if dist_performance else pd.DataFrame()
+
+    if len(df_sdm_rank) > 0 or len(df_dist_rank) > 0:
+        st.write("")
+        l_col1, l_col2, l_col3, l_col4 = st.columns(4)
+        
+        if len(df_sdm_rank) > 0:
+            top_sdm = df_sdm_rank.iloc[0]
+            bot_sdm = df_sdm_rank.iloc[-1]
+            with l_col1:
+                st.markdown(f'<div class="lead-card-top"><div class="lead-title" style="color: #16a34a;">🏆 Top SDM (Retail Pen %)</div><div class="lead-name">{top_sdm["Name"]}</div><div class="lead-stats">Pen: <b>{top_sdm["Penetration_%"]:.1f}%</b> ({top_sdm["Billed"]:,}/{top_sdm["Planned"]:,}) | Hit: <b>{top_sdm["Hit_Rate"]:.1f}%</b></div></div>', unsafe_allow_html=True)
+            with l_col2:
+                st.markdown(f'<div class="lead-card-bottom"><div class="lead-title" style="color: #dc2626;">🔻 Bottom SDM (Retail Pen %)</div><div class="lead-name">{bot_sdm["Name"]}</div><div class="lead-stats">Pen: <b>{bot_sdm["Penetration_%"]:.1f}%</b> ({bot_sdm["Billed"]:,}/{bot_sdm["Planned"]:,}) | Hit: <b>{bot_sdm["Hit_Rate"]:.1f}%</b></div></div>', unsafe_allow_html=True)
+
+        if len(df_dist_rank) > 0:
+            top_dist = df_dist_rank.iloc[0]
+            bot_dist = df_dist_rank.iloc[-1]
+            with l_col3:
+                st.markdown(f'<div class="lead-card-top"><div class="lead-title" style="color: #16a34a;">🥇 Top Distributor (Retail)</div><div class="lead-name">{top_dist["Name"]}</div><div class="lead-stats">Pen: <b>{top_dist["Penetration_%"]:.1f}%</b> ({top_dist["Billed"]:,}/{top_dist["Planned"]:,}) | Hit: <b>{top_dist["Hit_Rate"]:.1f}%</b></div></div>', unsafe_allow_html=True)
+            with l_col4:
+                st.markdown(f'<div class="lead-card-bottom"><div class="lead-title" style="color: #dc2626;">⚠️ Bottom Distributor (Retail)</div><div class="lead-name">{bot_dist["Name"]}</div><div class="lead-stats">Pen: <b>{bot_dist["Penetration_%"]:.1f}%</b> ({bot_dist["Billed"]:,}/{bot_dist["Planned"]:,}) | Hit: <b>{bot_dist["Hit_Rate"]:.1f}%</b></div></div>', unsafe_allow_html=True)
 
     st.write("")
 
-    # 3. STICKY HIERARCHY & ROUTE SEARCH FILTERS
+    # 5. STICKY HIERARCHY & ROUTE SEARCH FILTERS
     with st.container(border=True):
         top_ctrl1, top_ctrl2 = st.columns([4, 1])
         with top_ctrl1:
@@ -865,77 +1068,7 @@ if uploaded_sales is not None:
     badge_pad = f"{max(1, pad_v // 2)}px {max(4, pad_h // 2)}px"
     badge_sz = f"{max(8, global_font_px - 2)}px"
 
-    # Pre-calculate Data for All Tabs & Exports
-    sku_agg = f_sales.groupby('Target_Product_Group', observed=True).agg(
-        Active_Outlets=('Outlet_Code', 'nunique'),
-        Total_Cases=('Sales_Raw Cases', 'sum')
-    ).to_dict(orient='index')
-
-    route_planned = f_pjp.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict() if f_pjp is not None else f_sales.groupby('PJP_Name', observed=True)['Outlet_Code'].nunique().to_dict()
-    route_sku_billed = f_sales.groupby(['Target_Product_Group', 'PJP_Name'], observed=True)['Outlet_Code'].nunique().to_dict()
-
-    route_inv_sku = f_sales.groupby(['PJP_Name', 'INVOICE_NUMBER'], observed=True)['Product NAME'].nunique().reset_index()
-    route_avg_sku_bill = route_inv_sku.groupby('PJP_Name', observed=True)['Product NAME'].mean().to_dict()
-
-    hit_count = 0
-    sku_records = []
-    best_sku_name, best_sku_pen = "", -1.0
-    worst_sku_name, worst_sku_gap, worst_sku_rem = "", 1.0, 0
-
-    for prod_group, target_pct in target_mapping.items():
-        data = sku_agg.get(prod_group, {'Active_Outlets': 0, 'Total_Cases': 0.0})
-        productive_outlets = data['Active_Outlets']
-        actual_pen = (productive_outlets / total_planned_outlets) if total_planned_outlets > 0 else 0.0
-        gap_pct = actual_pen - target_pct
-        target_outlets_needed = int(round(total_planned_outlets * target_pct))
-        remaining_to_achieve = max(0, target_outlets_needed - productive_outlets)
-
-        if actual_pen > best_sku_pen:
-            best_sku_pen = actual_pen
-            best_sku_name = prod_group
-        if gap_pct < worst_sku_gap:
-            worst_sku_gap = gap_pct
-            worst_sku_name = prod_group
-            worst_sku_rem = remaining_to_achieve
-
-        lowest_rt = "N/A"
-        lowest_rt_pct = 999.0
-        for r_name, r_total in route_planned.items():
-            if str(r_name).strip() == "" or r_total < 5:
-                continue
-            r_sold = route_sku_billed.get((prod_group, r_name), 0)
-            r_pen = (r_sold / r_total) * 100
-            if r_pen < lowest_rt_pct:
-                lowest_rt_pct = r_pen
-                lowest_rt = f"{r_name} ({r_pen:.0f}%)"
-
-        if gap_pct >= 0:
-            status = "Hit 🎯"
-            hit_count += 1
-            rem_str = "0 (Achieved 🎯)"
-        elif gap_pct >= -0.05:
-            status = "Close ⚠️"
-            rem_str = f"{remaining_to_achieve:,} Outlets"
-        else:
-            status = "Far ❌"
-            rem_str = f"{remaining_to_achieve:,} Outlets"
-
-        sku_records.append({
-            "SKU / Group Name": prod_group,
-            "Target %": f"{target_pct*100:.0f}%",
-            "Productive": productive_outlets,
-            "Actual Pen Num": actual_pen * 100.0,
-            "Actual Pen %": f"{actual_pen*100:.1f}%",
-            "Gap %": f"{gap_pct*100:+.1f}%",
-            "Remaining to Achieve": rem_str,
-            "Lagging Route": lowest_rt if lowest_rt != "N/A" else "General Market",
-            "Total Cases": round(data['Total_Cases'], 1),
-            "Status": status
-        })
-
-    df_sku_rep = pd.DataFrame(sku_records)
-
-    # Shared Active Series & Matrix DataFrames
+    # Shared Active Series
     active_series = []
     all_ordered_skus = []
     for s_title, s_color, s_items in SKU_SERIES_GROUPS:
@@ -944,77 +1077,19 @@ if uploaded_sales is not None:
             active_series.append((s_title, s_color, valid_items))
             all_ordered_skus.extend(valid_items)
 
-    sorted_routes = [r for r in sorted(list(route_planned.keys())) if route_planned.get(r, 0) > 0]
+    # Dynamic Bottom Total Row Label based on selected filter
+    if sel_route != "All Filtered Routes":
+        total_row_label = f"TOTAL ({sel_route})"
+    elif sel_sdm != "All SDMs":
+        total_row_label = f"TOTAL ({sel_sdm})"
+    elif sel_dist != "All Distributors":
+        total_row_label = f"TOTAL ({sel_dist})"
+    elif sel_unit != "All Units":
+        total_row_label = f"TOTAL ({sel_unit})"
+    else:
+        total_row_label = "GRAND TOTAL (ALL RETAIL)"
 
-    # Build DataFrames for Routes/Rows (Count), Routes/Rows (%), PNG Matrix, and Routes/Cols
-    export_rows_count = []
-    export_rows_pct = []
-    png_matrix_rows = []
-    
-    current_metric_mode = st.session_state.get('metric_rows_radio', "Count View")
-
-    for r_full in sorted_routes:
-        r_mapped = route_planned.get(r_full, 0)
-        if " - " in str(r_full):
-            r_id_txt, r_nm_txt = str(r_full).split(" - ", 1)
-        else:
-            r_id_txt, r_nm_txt = "-", str(r_full)
-        r_billed_cnt = f_sales[f_sales['PJP_Name'] == r_full]['Outlet_Code'].nunique()
-        r_sku_bill_val = round(route_avg_sku_bill.get(r_full, 0.0), 2)
-
-        row_c = {"Route ID": r_id_txt, "Route Name": r_nm_txt, "Covered": r_billed_cnt, "Mapped": r_mapped}
-        row_p = {"Route ID": r_id_txt, "Route Name": r_nm_txt, "Covered": r_billed_cnt, "Mapped": r_mapped}
-        row_png = {"ID": r_id_txt, "Route Name": r_nm_txt[:22], "Cov/Map": f"{r_billed_cnt} / {r_mapped}"}
-        
-        for short_lbl, full_key in all_ordered_skus:
-            sc = route_sku_billed.get((full_key, r_full), 0)
-            pp = round((sc / r_mapped * 100), 1) if r_mapped > 0 else 0.0
-            row_c[short_lbl] = sc
-            row_p[short_lbl] = f"{pp:.1f}%"
-            if sc == 0:
-                row_png[short_lbl] = "—"
-            else:
-                row_png[short_lbl] = f"{sc}" if current_metric_mode == "Count View" else f"{pp:.0f}%"
-                
-        row_c["SKU / Bill"] = r_sku_bill_val
-        row_p["SKU / Bill"] = r_sku_bill_val
-        row_png["SKU/Bill"] = f"{r_sku_bill_val:.2f}"
-        
-        export_rows_count.append(row_c)
-        export_rows_pct.append(row_p)
-        png_matrix_rows.append(row_png)
-
-    df_export_routes_count = pd.DataFrame(export_rows_count)
-    df_export_routes_pct = pd.DataFrame(export_rows_pct)
-    df_png_matrix = pd.DataFrame(png_matrix_rows)
-
-    export_cols_list = []
-    if len(sorted_routes) > 0:
-        row_cov = {"Product / SKU": "Covered / Mapped Outlets"}
-        row_sb = {"Product / SKU": "SKU / Bill"}
-        for r_full in sorted_routes:
-            rm = route_planned.get(r_full, 0)
-            rb = f_sales[f_sales['PJP_Name'] == r_full]['Outlet_Code'].nunique()
-            row_cov[r_full] = f"{rb} / {rm}"
-            row_sb[r_full] = round(route_avg_sku_bill.get(r_full, 0.0), 2)
-        row_cov["TOTAL COVERED"] = f"{billed_outlets} / {total_planned_outlets}"
-        row_sb["TOTAL COVERED"] = round(avg_sku_per_bill, 2)
-        export_cols_list.append(row_cov)
-        export_cols_list.append(row_sb)
-
-        for short_lbl, full_key in all_ordered_skus:
-            r_dict = {"Product / SKU": full_key}
-            tot_sc = 0
-            for r_full in sorted_routes:
-                sc = route_sku_billed.get((full_key, r_full), 0)
-                tot_sc += sc
-                r_dict[r_full] = sc
-            r_dict["TOTAL COVERED"] = tot_sc
-            export_cols_list.append(r_dict)
-
-    df_export_routes_cols = pd.DataFrame(export_cols_list)
-
-    # 4. ALL TABS
+    # 6. ALL TABS
     tab_r_rows, tab_r_cols, tab_summary, tab_pack, tab_booker, tab_outlets = st.tabs([
         "📊 Routes / Rows Matrix",
         "📋 Routes / Cols Matrix",
@@ -1025,13 +1100,21 @@ if uploaded_sales is not None:
     ])
 
     # ==============================================================================
-    # TAB 1: ROUTES / ROWS MATRIX
+    # TAB 1: ROUTES / ROWS MATRIX (WITH ROUTE / PSR / SDM TOGGLE + BOTTOM TOTAL ROW)
     # ==============================================================================
     with tab_r_rows:
-        m_top1, m_top2 = st.columns([2.5, 1.5])
+        m_top1, m_top2, m_top3 = st.columns([1.8, 1.8, 1.4])
         with m_top1:
-            st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>🗺️ Retail Coverage Matrix <span style='background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:12px;font-size:11px;'>{filtered_routes_count} active retail routes</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>🗺️ Retail Coverage Matrix</div>", unsafe_allow_html=True)
         with m_top2:
+            matrix_group_by = st.radio(
+                "View Level:",
+                ["Route Wise", "PSR (Booker) Wise", "SDM Wise"],
+                horizontal=True,
+                key="matrix_group_radio",
+                label_visibility="collapsed"
+            )
+        with m_top3:
             display_metric_rows = st.radio(
                 "Display Metric:",
                 ["Count View", "Percentage (%)"],
@@ -1040,18 +1123,38 @@ if uploaded_sales is not None:
                 label_visibility="collapsed"
             )
 
+        if matrix_group_by == "PSR (Booker) Wise":
+            grp_col = 'BOOKER_Name'
+            id_col_hdr = "SR #"
+            name_col_hdr = "PSR / BOOKER NAME"
+        elif matrix_group_by == "SDM Wise":
+            grp_col = 'SDM/SDO/SDS'
+            id_col_hdr = "SR #"
+            name_col_hdr = "SDM / SDO / SDS NAME"
+        else:
+            grp_col = 'PJP_Name'
+            id_col_hdr = "ROUTE ID"
+            name_col_hdr = "ROUTE NAME"
+
+        grp_planned = f_pjp.groupby(grp_col, observed=True)['Outlet_Code'].nunique().to_dict() if (f_pjp is not None and grp_col in f_pjp.columns) else f_sales.groupby(grp_col, observed=True)['Outlet_Code'].nunique().to_dict()
+        grp_sku_billed = f_sales.groupby(['Target_Product_Group', grp_col], observed=True)['Outlet_Code'].nunique().to_dict()
+        grp_inv_sku = f_sales.groupby([grp_col, 'INVOICE_NUMBER'], observed=True)['Product NAME'].nunique().reset_index()
+        grp_avg_sku_bill = grp_inv_sku.groupby(grp_col, observed=True)['Product NAME'].mean().to_dict()
+
+        sorted_entities = [e for e in sorted(list(grp_planned.keys())) if grp_planned.get(e, 0) > 0 and str(e).strip() != "" and str(e) != "Unknown SDM"]
+
         r_html = [
             f'<div style="overflow-x:auto; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 2px 6px rgba(0,0,0,0.05); margin-top:6px;">',
             f'<table style="width:100%; border-collapse:collapse; background:#ffffff; font-size:{global_font_px}px; line-height:1.15;">',
             '<thead>',
-            '<tr style="background:#0b132b; color:#ffffff; font-weight:800;">',
-            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:center;">ROUTE ID</th>',
-            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:left; min-width:160px;">ROUTE NAME</th>',
-            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:center;">Covered /<br>Mapped</th>'
+            '<tr style="background:#002244; color:#ffffff; font-weight:800;">',
+            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">{id_col_hdr}</th>',
+            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:left; min-width:170px;">{name_col_hdr}</th>',
+            f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">Covered /<br>Mapped</th>'
         ]
         for s_title, s_color, valid_items in active_series:
             r_html.append(f'<th colspan="{len(valid_items)}" style="background:{s_color}; color:#ffffff; padding:{pad_v}px {pad_h}px; border:1px solid rgba(255,255,255,0.25); text-align:center; letter-spacing:0.4px;">{s_title}</th>')
-        r_html.append(f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:center; background:#0f172a;">SKU /<br>BILL</th>')
+        r_html.append(f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center; background:#001a33;">SKU /<br>BILL</th>')
         r_html.append('</tr>')
 
         r_html.append('<tr>')
@@ -1060,21 +1163,32 @@ if uploaded_sales is not None:
                 r_html.append(f'<th style="background:{s_color}; opacity:0.92; color:#ffffff; padding:{pad_v}px 4px; border:1px solid rgba(255,255,255,0.2); text-align:center; font-size:{max(8, global_font_px-1)}px;">{short_lbl}</th>')
         r_html.append('</tr></thead><tbody>')
 
-        for r_full in sorted_routes:
-            r_mapped = route_planned.get(r_full, 0)
-            if " - " in str(r_full):
-                r_id_txt, r_nm_txt = str(r_full).split(" - ", 1)
-            else:
-                r_id_txt, r_nm_txt = "-", str(r_full)
+        export_rows_count = []
+        export_rows_pct = []
+        png_matrix_rows = []
 
-            r_billed_cnt = f_sales[f_sales['PJP_Name'] == r_full]['Outlet_Code'].nunique()
-            r_sku_bill_val = route_avg_sku_bill.get(r_full, 0.0)
-            
+        for idx_e, ent_full in enumerate(sorted_entities, start=1):
+            e_mapped = grp_planned.get(ent_full, 0)
+            if matrix_group_by == "Route Wise" and " - " in str(ent_full):
+                e_id_txt, e_nm_txt = str(ent_full).split(" - ", 1)
+            else:
+                e_id_txt, e_nm_txt = str(idx_e), str(ent_full)
+
+            e_billed_cnt = f_sales[f_sales[grp_col] == ent_full]['Outlet_Code'].nunique()
+            e_sku_bill_val = round(grp_avg_sku_bill.get(ent_full, 0.0), 2)
+
+            row_c = {"ID": e_id_txt, name_col_hdr: e_nm_txt, "Covered": e_billed_cnt, "Mapped": e_mapped}
+            row_p = {"ID": e_id_txt, name_col_hdr: e_nm_txt, "Covered": e_billed_cnt, "Mapped": e_mapped}
+            row_png = {"ID": e_id_txt, "Name": e_nm_txt[:22], "Cov/Map": f"{e_billed_cnt} / {e_mapped}"}
+
             cells_html = []
             for short_lbl, full_key in all_ordered_skus:
-                sold_c = route_sku_billed.get((full_key, r_full), 0)
-                pen_p = (sold_c / r_mapped * 100) if r_mapped > 0 else 0.0
+                sold_c = grp_sku_billed.get((full_key, ent_full), 0)
+                pen_p = (sold_c / e_mapped * 100) if e_mapped > 0 else 0.0
                 tgt_p = target_mapping.get(full_key, 0.5) * 100.0
+
+                row_c[short_lbl] = sold_c
+                row_p[short_lbl] = f"{pen_p:.1f}%"
 
                 if sold_c == 0:
                     cell_disp = "—"
@@ -1092,20 +1206,64 @@ if uploaded_sales is not None:
                         cell_bg = "#fefce8"
                         cell_fg = "#b45309"
 
+                row_png[short_lbl] = cell_disp
                 cells_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #e2e8f0; text-align:center; background:{cell_bg}; color:{cell_fg}; font-weight:800;">{cell_disp}</td>')
+
+            row_c["SKU / Bill"] = e_sku_bill_val
+            row_p["SKU / Bill"] = e_sku_bill_val
+            row_png["SKU/Bill"] = f"{e_sku_bill_val:.2f}"
+            export_rows_count.append(row_c)
+            export_rows_pct.append(row_p)
+            png_matrix_rows.append(row_png)
 
             r_html.append(
                 f'<tr>'
-                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#475569; font-weight:600;">{r_id_txt}</td>'
-                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; font-weight:700; color:#0f172a; white-space:nowrap;">{r_nm_txt}</td>'
-                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:700; color:#0f172a; white-space:nowrap;">{r_billed_cnt} / {r_mapped}</td>'
+                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#475569; font-weight:600;">{e_id_txt}</td>'
+                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; font-weight:700; color:#0f172a; white-space:nowrap;">{e_nm_txt}</td>'
+                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:700; color:#0f172a; white-space:nowrap;">{e_billed_cnt} / {e_mapped}</td>'
                 f'{"".join(cells_html)}'
-                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; color:#4338ca;">{r_sku_bill_val:.2f}</td>'
+                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; color:#004B93;">{e_sku_bill_val:.2f}</td>'
                 f'</tr>'
             )
 
+        # BOTTOM SUMMARY / GRAND TOTAL ROW FOR ACTIVE SELECTION
+        tot_row_c = {"ID": "Σ", name_col_hdr: total_row_label, "Covered": billed_outlets, "Mapped": total_planned_outlets}
+        tot_row_p = {"ID": "Σ", name_col_hdr: total_row_label, "Covered": billed_outlets, "Mapped": total_planned_outlets}
+        tot_row_png = {"ID": "Σ", "Name": total_row_label[:22], "Cov/Map": f"{billed_outlets} / {total_planned_outlets}"}
+
+        tot_cells_html = []
+        for short_lbl, full_key in all_ordered_skus:
+            tot_sold = sku_agg.get(full_key, {'Active_Outlets': 0})['Active_Outlets']
+            tot_pen = (tot_sold / total_planned_outlets * 100) if total_planned_outlets > 0 else 0.0
+            tot_row_c[short_lbl] = tot_sold
+            tot_row_p[short_lbl] = f"{tot_pen:.1f}%"
+            tot_disp = f"{tot_sold:,}" if display_metric_rows == "Count View" else f"{tot_pen:.1f}%"
+            tot_row_png[short_lbl] = tot_disp
+            tot_cells_html.append(f'<td style="padding:{pad_v+2}px 4px; border:1px solid #003366; text-align:center; background:#002244; color:#ffffff; font-weight:800;">{tot_disp}</td>')
+
+        tot_row_c["SKU / Bill"] = round(avg_sku_per_bill, 2)
+        tot_row_p["SKU / Bill"] = round(avg_sku_per_bill, 2)
+        tot_row_png["SKU/Bill"] = f"{avg_sku_per_bill:.2f}"
+        export_rows_count.append(tot_row_c)
+        export_rows_pct.append(tot_row_p)
+        png_matrix_rows.append(tot_row_png)
+
+        r_html.append(
+            f'<tr style="background:#002244; color:#ffffff; font-weight:800;">'
+            f'<td style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">Σ</td>'
+            f'<td style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:left; white-space:nowrap;">{total_row_label}</td>'
+            f'<td style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center; white-space:nowrap;">{billed_outlets:,} / {total_planned_outlets:,}</td>'
+            f'{"".join(tot_cells_html)}'
+            f'<td style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center; background:#001a33; color:#38bdf8;">{avg_sku_per_bill:.2f}</td>'
+            f'</tr>'
+        )
+
         r_html.append('</tbody></table></div>')
         st.markdown("".join(r_html), unsafe_allow_html=True)
+
+        df_export_routes_count = pd.DataFrame(export_rows_count)
+        df_export_routes_pct = pd.DataFrame(export_rows_pct)
+        df_png_matrix = pd.DataFrame(png_matrix_rows)
 
     # ==============================================================================
     # TAB 2: ROUTES / COLS MATRIX
@@ -1123,38 +1281,52 @@ if uploaded_sales is not None:
                 label_visibility="collapsed"
             )
 
+        sorted_routes = [r for r in sorted(list(route_planned.keys())) if route_planned.get(r, 0) > 0]
+        export_cols_list = []
+
         if len(sorted_routes) > 0:
             c_html = [
                 f'<div style="overflow-x:auto; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 2px 6px rgba(0,0,0,0.05); margin-top:6px;">',
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; font-size:{global_font_px}px; line-height:1.15;">',
-                '<thead><tr style="background:#0b132b; color:#ffffff; font-weight:800;">',
-                f'<th style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:left; min-width:160px;">PRODUCT / SKU</th>'
+                '<thead><tr style="background:#002244; color:#ffffff; font-weight:800;">',
+                f'<th style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:left; min-width:160px;">PRODUCT / SKU</th>'
             ]
             for r_full in sorted_routes:
                 short_r = r_full.split(" - ", 1)[1][:14] if " - " in str(r_full) else str(r_full)[:14]
                 r_code = r_full.split(" - ", 1)[0] if " - " in str(r_full) else ""
-                c_html.append(f'<th style="padding:{pad_v+2}px 5px; border:1px solid #1e293b; text-align:center; font-size:{max(8, global_font_px-1)}px;">{r_code}<br>{short_r}</th>')
-            c_html.append(f'<th style="padding:{pad_v+2}px {pad_h}px; border:1px solid #1e293b; text-align:center; background:#0f172a;">TOTAL<br>COVERED</th>')
+                c_html.append(f'<th style="padding:{pad_v+2}px 5px; border:1px solid #003366; text-align:center; font-size:{max(8, global_font_px-1)}px;">{r_code}<br>{short_r}</th>')
+            c_html.append(f'<th style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center; background:#001a33;">TOTAL<br>COVERED</th>')
             c_html.append('</tr></thead><tbody>')
+
+            row_cov = {"Product / SKU": "Covered / Mapped Outlets"}
+            row_sb = {"Product / SKU": "SKU / Bill"}
 
             c_html.append('<tr style="background:#e2e8f0; font-weight:800;">')
             c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #cbd5e1; color:#0f172a;">Covered / Mapped Outlets</td>')
             for r_full in sorted_routes:
                 rm = route_planned.get(r_full, 0)
                 rb = f_sales[f_sales['PJP_Name'] == r_full]['Outlet_Code'].nunique()
+                row_cov[r_full] = f"{rb} / {rm}"
                 c_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #cbd5e1; text-align:center; color:#0f172a; white-space:nowrap;">{rb} / {rm}</td>')
+            row_cov["TOTAL COVERED"] = f"{billed_outlets} / {total_planned_outlets}"
             c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #cbd5e1; text-align:center; color:#003366;">{billed_outlets:,} / {total_planned_outlets:,}</td></tr>')
 
             c_html.append('<tr style="background:#f8fafc; font-weight:800;">')
-            c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; color:#4338ca;">SKU / Bill</td>')
+            c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; color:#004B93;">SKU / Bill</td>')
             for r_full in sorted_routes:
                 sb_v = route_avg_sku_bill.get(r_full, 0.0)
-                c_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #e2e8f0; text-align:center; color:#4338ca;">{sb_v:.2f}</td>')
-            c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#4338ca;">{avg_sku_per_bill:.2f}</td></tr>')
+                row_sb[r_full] = round(sb_v, 2)
+                c_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #e2e8f0; text-align:center; color:#004B93;">{sb_v:.2f}</td>')
+            row_sb["TOTAL COVERED"] = round(avg_sku_per_bill, 2)
+            c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#004B93;">{avg_sku_per_bill:.2f}</td></tr>')
+
+            export_cols_list.append(row_cov)
+            export_cols_list.append(row_sb)
 
             for s_title, s_color, valid_items in active_series:
                 c_html.append(f'<tr><td colspan="{len(sorted_routes) + 2}" style="background:{s_color}; color:#ffffff; font-weight:800; padding:{pad_v}px {pad_h}px; letter-spacing:0.5px;">{s_title} SERIES PACKAGE SKUS</td></tr>')
                 for short_lbl, full_key in valid_items:
+                    r_dict = {"Product / SKU": full_key}
                     c_html.append('<tr>')
                     c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; font-weight:700; color:#0f172a;">{full_key}</td>')
                     tot_sku_sold = 0
@@ -1162,6 +1334,7 @@ if uploaded_sales is not None:
                         rm = route_planned.get(r_full, 0)
                         sc = route_sku_billed.get((full_key, r_full), 0)
                         tot_sku_sold += sc
+                        r_dict[r_full] = sc
                         pen_p = (sc / rm * 100) if rm > 0 else 0.0
                         if sc == 0:
                             disp_v, bg_c, fg_c = "—", "#fff1f2", "#e11d48"
@@ -1171,14 +1344,18 @@ if uploaded_sales is not None:
                         c_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #e2e8f0; text-align:center; background:{bg_c}; color:{fg_c}; font-weight:800;">{disp_v}</td>')
                     tot_pen_all = (tot_sku_sold / total_planned_outlets * 100) if total_planned_outlets > 0 else 0.0
                     tot_disp = f"{tot_sku_sold:,}" if display_metric_cols == "Count View" else f"{tot_pen_all:.1f}%"
-                    c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; background:#f1f5f9; color:#0f172a;">{tot_disp}</td>')
+                    r_dict["TOTAL COVERED"] = tot_sku_sold
+                    export_cols_list.append(r_dict)
+                    c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; background:#002244; color:#ffffff;">{tot_disp}</td>')
                     c_html.append('</tr>')
 
             c_html.append('</tbody></table></div>')
             st.markdown("".join(c_html), unsafe_allow_html=True)
 
+        df_export_routes_cols = pd.DataFrame(export_cols_list)
+
     # ==============================================================================
-    # TAB 3: SKU TARGET SUMMARY
+    # TAB 3: SKU TARGET SUMMARY (WITH RESTORED "VS LAST READ" COLUMN)
     # ==============================================================================
     with tab_summary:
         q_col1, q_col2 = st.columns([2.5, 1.5])
@@ -1208,15 +1385,16 @@ if uploaded_sales is not None:
         html_lines = [
             f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
             '<thead>',
-            '<tr style="background:#0b132b; color:#ffffff; font-weight:800;">',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #1e293b;">SKU / Group Name</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #1e293b;">Target</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #1e293b;">Productive</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #1e293b; min-width:105px;">Actual Pen %</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #1e293b;">Gap</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #1e293b;">Remaining Outlets</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #1e293b;">Lagging Route (Retail)</th>',
-            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #1e293b;">Status</th>',
+            '<tr style="background:#002244; color:#ffffff; font-weight:800;">',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #003366;">SKU / Group Name</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366;">Target</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366;">Productive</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366; min-width:105px;">Actual Pen %</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366;">Gap</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #003366;">Remaining Outlets</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #003366;">Lagging Route (Retail)</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366;">VS Last Read</th>',
+            f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center; border:1px solid #003366;">Status</th>',
             '</tr>',
             '</thead>',
             '<tbody>'
@@ -1256,6 +1434,7 @@ if uploaded_sales is not None:
                 f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; color:{gap_color};">{row["Gap %"]}</td>'
                 f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; font-weight:600; color:#334155;">{row["Remaining to Achieve"]}</td>'
                 f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; color:#475569;">{row["Lagging Route"]}</td>'
+                f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:700; color:#0284c7; white-space:nowrap;">{row["VS Last Read"]}</td>'
                 f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; white-space:nowrap;">{badge_html}</td>'
                 f'</tr>'
             )
@@ -1283,7 +1462,7 @@ if uploaded_sales is not None:
 
             pack_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
-                '<thead><tr style="background:#0b132b; color:#ffffff; font-weight:800;">',
+                '<thead><tr style="background:#002244; color:#ffffff; font-weight:800;">',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left;">Package Name</th>',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center;">Productive Outlets</th>',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center;">Total Cases</th>',
@@ -1360,7 +1539,7 @@ if uploaded_sales is not None:
 
             bkr_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
-                '<thead><tr style="background:#0b132b; color:#ffffff; font-weight:800;">',
+                '<thead><tr style="background:#002244; color:#ffffff; font-weight:800;">',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:center;">Rank</th>',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left;">Booker Name</th>',
                 f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left;">SDM</th>',
@@ -1481,8 +1660,8 @@ if uploaded_sales is not None:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             if len(df_export_routes_count) > 0:
-                df_export_routes_count.to_excel(writer, sheet_name='Routes Rows (Count)', index=False)
-                df_export_routes_pct.to_excel(writer, sheet_name='Routes Rows (%)', index=False)
+                df_export_routes_count.to_excel(writer, sheet_name='Matrix Rows (Count)', index=False)
+                df_export_routes_pct.to_excel(writer, sheet_name='Matrix Rows (%)', index=False)
             if len(df_export_routes_cols) > 0:
                 df_export_routes_cols.to_excel(writer, sheet_name='Routes Cols (Transposed)', index=False)
             df_sku_rep.drop(columns=['Actual Pen Num']).to_excel(writer, sheet_name='SKU Penetration', index=False)
@@ -1499,12 +1678,12 @@ if uploaded_sales is not None:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     with dl_col2:
-        matrix_title = f"RETAIL ROUTE COVERAGE MATRIX ({current_metric_mode.upper()}) | {sel_dist} | {sel_sdm}"
-        matrix_sub = f"Active Routes: {filtered_routes_count} | Planned Outlets: {total_planned_outlets:,} | Billed: {billed_outlets:,} ({overall_pen_pct:.1f}%) | Avg SKU/Bill: {avg_sku_per_bill:.2f}"
-        matrix_png = generate_route_matrix_png(df_png_matrix, current_metric_mode, matrix_title, matrix_sub, target_mapping, all_ordered_skus)
+        matrix_title = f"RETAIL COVERAGE MATRIX ({matrix_group_by.upper()} - {display_metric_rows.upper()}) | {sel_dist} | {sel_sdm}"
+        matrix_sub = f"Planned Outlets: {total_planned_outlets:,} | Billed: {billed_outlets:,} ({overall_pen_pct:.1f}%) | Avg SKU/Bill: {avg_sku_per_bill:.2f}"
+        matrix_png = generate_route_matrix_png(df_png_matrix, display_metric_rows, matrix_title, matrix_sub, target_mapping, all_ordered_skus)
         if matrix_png is not None:
             st.download_button(
-                label="🗺️ Download Route Matrix (PNG)",
+                label="🗺️ Download Matrix Image (PNG)",
                 data=matrix_png,
                 file_name="Pepsi_Route_Coverage_Matrix.png",
                 mime="image/png"
@@ -1522,4 +1701,28 @@ if uploaded_sales is not None:
             )
 
 else:
-    st.info("👈 Baraye meharbani sidebar se Sales Raw Data upload karein. (GitHub mein 'targets.xlsx' aur 'pjp.xlsx' maujood hon to woh automatic load ho jayengi).")
+    t_badge = "✓ Saved Targets Active" if repo_target_bytes else "Default Targets Ready"
+    p_badge = "✓ Saved PJP Active" if repo_pjp_bytes else "PJP Optional"
+    startup_html = (
+        f'<div class="pepsi-header-container">'
+        f'<div class="pepsi-header-left">'
+        f'<div class="pepsi-header-logo">{pepsi_logo_svg}</div>'
+        f'<div>'
+        f'<h1 class="pepsi-header-title">PEPSICO SALES PENETRATION TRACKER</h1>'
+        f'<p class="pepsi-header-subtitle">PJP Planned Coverage • Route Matrix • Retail Territory Intelligence</p>'
+        f'</div></div>'
+        f'<div class="pepsi-header-badges">'
+        f'<span class="pepsi-pill">{t_badge}</span>'
+        f'<span class="pepsi-pill">{p_badge}</span>'
+        f'</div></div>'
+        f'<div style="background:#ffffff;border:1px solid #bae6fd;border-radius:14px;padding:36px 24px;text-align:center;margin-top:16px;box-shadow:0 4px 14px rgba(0, 75, 147, 0.08);">'
+        f'<div style="width:76px;height:76px;margin:0 auto 12px auto;border-radius:50%;background:#f0f7ff;display:flex;align-items:center;justify-content:center;border:2px solid #004B93;">'
+        f'{pepsi_logo_svg}'
+        f'</div>'
+        f'<h2 style="margin:0;color:#002244;font-weight:800;font-size:22px;">PepsiCo Retail Sales Penetration & Route Matrix</h2>'
+        f'<p style="color:#475569;font-size:14px;max-width:580px;margin:10px auto 18px auto;">'
+        f'Apni daily <b>Sales Raw Data (.xlsx)</b> sheet left sidebar (<code>&gt;</code>) se upload karein.<br>'
+        f'Wholesale aur Counter Sale automatically exclude ho kar sirf <b>Retail Routes</b> ka mukammal analysis tayyar ho jayega.'
+        f'</p></div>'
+    )
+    st.markdown(startup_html, unsafe_allow_html=True)
