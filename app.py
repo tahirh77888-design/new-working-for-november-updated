@@ -1,4 +1,5 @@
 import io
+import os
 import math
 import pandas as pd
 import streamlit as st
@@ -34,6 +35,13 @@ DEFAULT_TARGETS = {
 
 DAYS_LIST = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 CORE_BRANDS = ['Pepsi', '7-UP', 'M.Dew', 'Sting', 'Aquafina', 'Revive']
+
+def find_repo_file(possible_names):
+    for fname in possible_names:
+        if os.path.exists(fname):
+            with open(fname, "rb") as f:
+                return f.read(), fname
+    return None, None
 
 def extract_brand_name(prod_str):
     s = str(prod_str).upper()
@@ -342,14 +350,18 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
         st.sidebar.error(f"PJP File error: {e}")
         return None
 
-# Sidebar File Uploaders Only
+# Sidebar File Uploaders + GitHub Auto-Load Support
 st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/68/Pepsi_logo_2023.svg/300px-Pepsi_logo_2023.svg.png", width=115)
 st.sidebar.header("📁 Data Source Files")
 uploaded_sales = st.sidebar.file_uploader("1. Sales Raw Data (.xlsx)", type=["xlsx"])
-uploaded_target = st.sidebar.file_uploader("2. Targets File (.xlsx)", type=["xlsx"])
-uploaded_pjp = st.sidebar.file_uploader("3. PJP Master File (Optional .xlsx)", type=["xlsx"])
+uploaded_target = st.sidebar.file_uploader("2. Targets File (Optional Override)", type=["xlsx"])
+uploaded_pjp = st.sidebar.file_uploader("3. PJP Master File (Optional Override)", type=["xlsx"])
 
-# Global Base Styling
+# Auto-check GitHub Repo for saved targets.xlsx & pjp.xlsx
+repo_target_bytes, repo_target_name = find_repo_file(["targets.xlsx", "Targets.xlsx", "TARGETS.xlsx"])
+repo_pjp_bytes, repo_pjp_name = find_repo_file(["pjp.xlsx", "PJP.xlsx", "PJP_Master.xlsx", "pjp_master.xlsx"])
+
+# Global Base Styling (With Fixed Non-Blocking Interactive Layering)
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -364,13 +376,18 @@ st.markdown("""
     }
     
     .block-container {
-        padding-top: 0.9rem !important;
-        padding-bottom: 1rem !important;
+        padding-top: 1rem !important;
+        padding-bottom: 1.5rem !important;
         max-width: 100% !important;
     }
+    
+    /* Ensure Streamlit top bar never blocks clicks on dropdowns */
     header[data-testid="stHeader"] {
         background: transparent !important;
-        height: 2rem !important;
+        pointer-events: none !important;
+    }
+    header[data-testid="stHeader"] button {
+        pointer-events: auto !important;
     }
     
     /* Header Container */
@@ -483,23 +500,15 @@ st.markdown("""
         color: #334155;
     }
     
-    /* Hierarchy Filter Bar */
-    .filter-wrapper {
-        background: #ffffff;
-        border: 1px solid #93c5fd;
-        border-radius: 10px;
-        padding: 10px 16px 4px 16px;
-        margin-top: 10px;
-        margin-bottom: 12px;
-        box-shadow: 0 2px 8px rgba(0, 75, 147, 0.06);
-    }
-    .filter-title {
-        font-size: 11px;
-        font-weight: 800;
-        color: #004B93;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-        margin-bottom: 4px;
+    /* Interactive Filter Bar (Fully Clickable, Elevated Z-Index) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        background-color: #ffffff !important;
+        border: 1px solid #93c5fd !important;
+        border-radius: 10px !important;
+        padding: 10px 14px !important;
+        box-shadow: 0 2px 8px rgba(0, 75, 147, 0.06) !important;
+        position: relative !important;
+        z-index: 50 !important;
     }
 
     /* Navigation Tabs */
@@ -542,22 +551,37 @@ st.markdown("""
 
 if uploaded_sales is not None:
     sales_bytes = uploaded_sales.getvalue()
-    target_bytes = uploaded_target.getvalue() if uploaded_target is not None else None
-    pjp_bytes = uploaded_pjp.getvalue() if uploaded_pjp is not None else None
+    
+    # Priority: Uploaded file > GitHub saved file > Default
+    if uploaded_target is not None:
+        target_bytes = uploaded_target.getvalue()
+        target_source_msg = "✅ Targets: Uploaded File"
+    elif repo_target_bytes is not None:
+        target_bytes = repo_target_bytes
+        target_source_msg = f"📌 Targets: Auto-Loaded ({repo_target_name})"
+    else:
+        target_bytes = None
+        target_source_msg = "ℹ️ Targets: Built-in Default"
+
+    if uploaded_pjp is not None:
+        pjp_bytes = uploaded_pjp.getvalue()
+        pjp_source_msg = "🗺️ PJP: Uploaded File"
+    elif repo_pjp_bytes is not None:
+        pjp_bytes = repo_pjp_bytes
+        pjp_source_msg = f"📌 PJP: Auto-Loaded ({repo_pjp_name})"
+    else:
+        pjp_bytes = None
+        pjp_source_msg = "ℹ️ Mode: Billed Outlets Only"
     
     df_sales = load_sales_data(sales_bytes)
     target_mapping = load_target_data(target_bytes)
     df_pjp_master = load_pjp_data(pjp_bytes, df_sales)
 
-    if uploaded_target is not None:
-        st.sidebar.success(f"✅ Targets Active: {len(target_mapping)} SKUs")
-    else:
-        st.sidebar.info("ℹ️ Default Targets Active")
-        
+    st.sidebar.success(target_source_msg)
     if df_pjp_master is not None:
-        st.sidebar.success(f"🗺️ PJP Active: {len(df_pjp_master):,} Operational Outlets")
+        st.sidebar.success(f"{pjp_source_msg} ({len(df_pjp_master):,} Outlets)")
     else:
-        st.sidebar.info("ℹ️ Mode: Billed Outlets Only")
+        st.sidebar.info(pjp_source_msg)
 
     base_hierarchy_df = df_pjp_master if df_pjp_master is not None else df_sales
     
@@ -839,45 +863,44 @@ if uploaded_sales is not None:
                 </div>
                 """, unsafe_allow_html=True)
 
-    # 4. HIERARCHY FILTERS + GLOBAL TABLE SCALE / FONT SIZE CONTROL (ABOVE ALL TABS)
-    st.markdown('<div class="filter-wrapper"><div class="filter-title">🔍 HIERARCHY FILTERS & GLOBAL SCREEN VIEW ADJUSTMENT (APPLIES TO ALL TABS)</div>', unsafe_allow_html=True)
-    
-    filt_c1, filt_c2, filt_c3, filt_c4, filt_c5, filt_c6 = st.columns([1, 1.2, 1.2, 1.2, 1.2, 1.2])
-    
-    raw_units = list(base_hierarchy_df['Unit_Name'].dropna().unique()) if 'Unit_Name' in base_hierarchy_df.columns else []
-    clean_units = [str(u) for u in raw_units if str(u).strip() and str(u) != "General Unit"]
-    unit_list = ["All Units"] + sorted(list(set(clean_units))) if clean_units else ["All Units"]
-    with filt_c1:
-        st.selectbox("Unit / Zone", unit_list, key="sel_unit_key")
+    st.write("")
 
-    temp_sales_dist = df_sales if sel_unit == "All Units" else df_sales[df_sales['Unit_Name'] == sel_unit]
-    dist_list = ["All Distributors"] + sorted([str(x) for x in temp_sales_dist['Dist_Name'].dropna().unique() if str(x).strip()])
-    with filt_c2:
-        st.selectbox("Distributor", dist_list, key="sel_dist_key")
+    # 4. NATIVE STREAMLIT BORDERED FILTER CONTAINER (ALWAYS CLICKABLE WITHOUT SCROLLING)
+    with st.container(border=True):
+        st.markdown('<div style="font-size:11px;font-weight:800;color:#004B93;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">🔍 HIERARCHY FILTERS & GLOBAL FONT SIZE ADJUSTMENT</div>', unsafe_allow_html=True)
+        filt_c1, filt_c2, filt_c3, filt_c4, filt_c5, filt_c6 = st.columns([1, 1.2, 1.2, 1.2, 1.2, 1.2])
+        
+        raw_units = list(base_hierarchy_df['Unit_Name'].dropna().unique()) if 'Unit_Name' in base_hierarchy_df.columns else []
+        clean_units = [str(u) for u in raw_units if str(u).strip() and str(u) != "General Unit"]
+        unit_list = ["All Units"] + sorted(list(set(clean_units))) if clean_units else ["All Units"]
+        with filt_c1:
+            st.selectbox("Unit / Zone", unit_list, key="sel_unit_key")
 
-    temp_sales_sdm = temp_sales_dist if sel_dist == "All Distributors" else temp_sales_dist[temp_sales_dist['Dist_Name'] == sel_dist]
-    raw_sdms = list(temp_sales_sdm['SDM/SDO/SDS'].dropna().unique())
-    clean_sdms = [str(x) for x in raw_sdms if str(x).strip() and str(x) != "Unknown SDM"]
-    sdm_list = ["All SDMs"] + sorted(list(set(clean_sdms)))
-    with filt_c3:
-        st.selectbox("SDM / SDS / TSE", sdm_list, key="sel_sdm_key")
+        temp_sales_dist = df_sales if sel_unit == "All Units" else df_sales[df_sales['Unit_Name'] == sel_unit]
+        dist_list = ["All Distributors"] + sorted([str(x) for x in temp_sales_dist['Dist_Name'].dropna().unique() if str(x).strip()])
+        with filt_c2:
+            st.selectbox("Distributor", dist_list, key="sel_dist_key")
 
-    temp_sales_bkr = temp_sales_sdm if sel_sdm == "All SDMs" else temp_sales_sdm[temp_sales_sdm['SDM/SDO/SDS'] == sel_sdm]
-    booker_list = ["All Bookers"] + sorted([str(x) for x in temp_sales_bkr['BOOKER_Name'].dropna().unique() if str(x).strip()])
-    with filt_c4:
-        st.selectbox("Booker (PSR)", booker_list, key="sel_booker_key")
+        temp_sales_sdm = temp_sales_dist if sel_dist == "All Distributors" else temp_sales_dist[temp_sales_dist['Dist_Name'] == sel_dist]
+        raw_sdms = list(temp_sales_sdm['SDM/SDO/SDS'].dropna().unique())
+        clean_sdms = [str(x) for x in raw_sdms if str(x).strip() and str(x) != "Unknown SDM"]
+        sdm_list = ["All SDMs"] + sorted(list(set(clean_sdms)))
+        with filt_c3:
+            st.selectbox("SDM / SDS / TSE", sdm_list, key="sel_sdm_key")
 
-    temp_sales_rt = temp_sales_bkr if sel_booker == "All Bookers" else temp_sales_bkr[temp_sales_bkr['BOOKER_Name'] == sel_booker]
-    pjp_list = ["All Routes"] + sorted([str(x) for x in temp_sales_rt['PJP_Name'].dropna().unique() if str(x).strip()])
-    with filt_c5:
-        st.selectbox("Route (PJP)", pjp_list, key="sel_pjp_key")
+        temp_sales_bkr = temp_sales_sdm if sel_sdm == "All SDMs" else temp_sales_sdm[temp_sales_sdm['SDM/SDO/SDS'] == sel_sdm]
+        booker_list = ["All Bookers"] + sorted([str(x) for x in temp_sales_bkr['BOOKER_Name'].dropna().unique() if str(x).strip()])
+        with filt_c4:
+            st.selectbox("Booker (PSR)", booker_list, key="sel_booker_key")
 
-    with filt_c6:
-        global_font_px = st.slider("🔠 Font Size (All Tabs)", min_value=9, max_value=16, value=12, step=1)
+        temp_sales_rt = temp_sales_bkr if sel_booker == "All Bookers" else temp_sales_bkr[temp_sales_bkr['BOOKER_Name'] == sel_booker]
+        pjp_list = ["All Routes"] + sorted([str(x) for x in temp_sales_rt['PJP_Name'].dropna().unique() if str(x).strip()])
+        with filt_c5:
+            st.selectbox("Route (PJP)", pjp_list, key="sel_pjp_key")
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        with filt_c6:
+            global_font_px = st.slider("🔠 Font Size (All Tabs)", min_value=9, max_value=16, value=12, step=1)
 
-    # Calculate Global Dynamic Padding & Row Height for ALL Tabs
     pad_v = max(2, int((global_font_px - 7) * 1.4))
     pad_h = max(4, int((global_font_px - 6) * 1.6))
     badge_pad = f"{max(1, pad_v // 2)}px {max(4, pad_h // 2)}px"
@@ -1264,4 +1287,4 @@ if uploaded_sales is not None:
             )
 
 else:
-    st.info("👈 Baraye meharbani sidebar se Sales Raw Data aur Target File upload karein.")
+    st.info("👈 Baraye meharbani sidebar se Sales Raw Data upload karein. (GitHub mein 'targets.xlsx' aur 'pjp.xlsx' maujood hon to woh automatic load ho jayengi).")
