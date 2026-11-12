@@ -3,6 +3,7 @@ import os
 import math
 import pandas as pd
 import streamlit as st
+from PIL import Image, ImageDraw, ImageFont
 
 # Page Configuration
 st.set_page_config(
@@ -140,184 +141,120 @@ def strip_emojis_for_png(text):
     s = str(text)
     replacements = {
         "🎯": "(HIT)", "⚠️": "(CLOSE)", "❌": "(FAR)", "⭐": "(STAR)",
-        "👍": "(GOOD)", "✅": "(OK)", "✓": "YES", "Σ": "TOTAL"
+        "👍": "(GOOD)", "✅": "YES", "✓": "YES", "Σ": "TOTAL", "—": "-"
     }
     for k, v in replacements.items():
         s = s.replace(k, v)
     return s.encode('ascii', 'ignore').decode('ascii').strip()
 
-# Universal High-Resolution PNG Table Renderer for ANY Tab
-def render_generic_table_png(df_table, title_text, subtitle_text, left_align_cols=None, highlight_col=None, max_rows=65):
+# 100% RELIABLE PURE PILLOW (PIL) PNG GENERATOR (ALWAYS WORKS ON STREAMLIT CLOUD)
+def create_pil_table_png(df_table, title_text, subtitle_text, left_align_cols=None, highlight_col=None, max_rows=70):
+    if df_table is None or len(df_table) == 0:
+        df_table = pd.DataFrame({"Notice": ["No rows available for current filter."]})
+
+    if len(df_table) > max_rows:
+        df_sub = pd.concat([df_table.iloc[:max_rows - 1], df_table.iloc[[-1]]], ignore_index=True)
+    else:
+        df_sub = df_table.copy()
+
+    left_align_cols = left_align_cols or []
+    cols = [strip_emojis_for_png(c) for c in df_sub.columns]
+    rows_data = [[strip_emojis_for_png(v) for v in row] for row in df_sub.values.tolist()]
+    n_cols = len(cols)
+    n_rows = len(rows_data)
+
+    # Load crisp TrueType font if available, else default
     try:
-        import matplotlib.pyplot as plt
-        if df_table is None or len(df_table) == 0:
-            return None
-        df_sub = df_table.head(max_rows).copy()
-        n_rows, n_cols = df_sub.shape
-        left_align_cols = left_align_cols or []
+        font_title = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
+        font_sub = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 14)
+        font_hdr = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 13)
+        font_cell = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 12)
+    except Exception:
+        font_title = ImageFont.load_default()
+        font_sub = ImageFont.load_default()
+        font_hdr = ImageFont.load_default()
+        font_cell = ImageFont.load_default()
 
-        fig_w = max(13, n_cols * 0.95)
-        fig_h = max(4.2, n_rows * 0.36 + 1.8)
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        ax.axis('off')
-        fig.patch.set_facecolor('#f8fafc')
+    # Calculate dynamic column widths based on max text length in each column
+    col_widths = []
+    for c_idx in range(n_cols):
+        max_chars = len(cols[c_idx])
+        for r_idx in range(n_rows):
+            max_chars = max(max_chars, len(rows_data[r_idx][c_idx]))
+        w_px = max(72, min(280, max_chars * 9 + 24))
+        col_widths.append(w_px)
 
-        plt.text(0.01, 0.965, strip_emojis_for_png(title_text), fontsize=13.5, fontweight='bold', color='#002244', transform=fig.transFigure)
-        plt.text(0.01, 0.935, strip_emojis_for_png(subtitle_text), fontsize=9.5, color='#475569', transform=fig.transFigure)
+    margin_x = 24
+    header_banner_h = 78
+    tbl_hdr_h = 38
+    row_h = 30
+    total_w = max(900, sum(col_widths) + margin_x * 2)
+    total_h = header_banner_h + tbl_hdr_h + (n_rows * row_h) + 28
 
-        cols = [strip_emojis_for_png(c) for c in df_sub.columns]
-        clean_data = [[strip_emojis_for_png(val) for val in row] for row in df_sub.values.tolist()]
+    img = Image.new("RGB", (total_w, total_h), "#f8fafc")
+    draw = ImageDraw.Draw(img)
 
-        table = ax.table(
-            cellText=clean_data,
-            colLabels=cols,
-            loc='center',
-            cellLoc='center',
-            bbox=[0.0, 0.0, 1.0, 0.90]
-        )
-        table.auto_set_font_size(False)
-        table.set_fontsize(7.5 if n_cols > 12 else 8.5)
+    # Top Pepsi Navy Banner
+    draw.rectangle([0, 0, total_w, 66], fill="#002244")
+    draw.rectangle([0, 62, total_w, 66], fill="#C9082A")
+    draw.text((margin_x, 12), strip_emojis_for_png(title_text), fill="#ffffff", font=font_title)
+    draw.text((margin_x, 40), strip_emojis_for_png(subtitle_text), fill="#bae6fd", font=font_sub)
 
-        hl_clean = strip_emojis_for_png(highlight_col) if highlight_col else None
+    hl_clean = strip_emojis_for_png(highlight_col) if highlight_col else None
 
-        for (r_idx, c_idx), cell in table.get_celld().items():
-            cell.set_edgecolor('#cbd5e1')
+    # Draw Table Header Row
+    y_curr = header_banner_h
+    x_curr = margin_x
+    for c_idx, col_name in enumerate(cols):
+        cw = col_widths[c_idx]
+        is_hl = (hl_clean is not None and col_name == hl_clean)
+        bg_c = "#facc15" if is_hl else "#003366"
+        fg_c = "#0f172a" if is_hl else "#ffffff"
+        draw.rectangle([x_curr, y_curr, x_curr + cw, y_curr + tbl_hdr_h], fill=bg_c, outline="#1e293b", width=1)
+        txt_w = draw.textlength(col_name, font=font_hdr)
+        tx = x_curr + 8 if c_idx in left_align_cols else x_curr + max(4, (cw - txt_w) / 2)
+        draw.text((tx, y_curr + 11), col_name, fill=fg_c, font=font_hdr)
+        x_curr += cw
+
+    # Draw Table Body Rows
+    y_curr += tbl_hdr_h
+    for r_idx, r_vals in enumerate(rows_data):
+        x_curr = margin_x
+        is_total_row = any("TOTAL" in str(v).upper() for v in r_vals[:2])
+        for c_idx, val_str in enumerate(r_vals):
+            cw = col_widths[c_idx]
             col_name = cols[c_idx]
             is_hl = (hl_clean is not None and col_name == hl_clean)
 
-            if r_idx == 0:
-                cell.set_facecolor('#facc15' if is_hl else '#002244')
-                cell.set_text_props(color='#0f172a' if is_hl else '#ffffff', fontweight='bold')
+            if is_total_row:
+                bg_c = "#002244"
+                fg_c = "#ffffff"
+            elif is_hl:
+                bg_c = "#86efac" if val_str == "YES" else "#fef9c3"
+                fg_c = "#0f172a"
+            elif val_str == "YES" or "(HIT)" in val_str or "(STAR)" in val_str:
+                bg_c = "#dcfce7"
+                fg_c = "#15803d"
+            elif "(CLOSE)" in val_str or "(GOOD)" in val_str:
+                bg_c = "#fef9c3"
+                fg_c = "#a16207"
+            elif "(FAR)" in val_str or "Zero Sale" in val_str or val_str == "-":
+                bg_c = "#fee2e2" if val_str != "-" else "#fff1f2"
+                fg_c = "#b91c1c"
             else:
-                val_str = clean_data[r_idx - 1][c_idx]
-                first_col_val = clean_data[r_idx - 1][0]
-                is_total_row = ("TOTAL" in first_col_val.upper() or (n_cols > 1 and "TOTAL" in clean_data[r_idx - 1][1].upper()))
+                bg_c = "#ffffff" if r_idx % 2 == 0 else "#f1f5f9"
+                fg_c = "#0f172a"
 
-                if c_idx in left_align_cols:
-                    cell.get_text().set_ha('left')
+            draw.rectangle([x_curr, y_curr, x_curr + cw, y_curr + row_h], fill=bg_c, outline="#cbd5e1", width=1)
+            txt_w = draw.textlength(val_str, font=font_cell)
+            tx = x_curr + 8 if c_idx in left_align_cols else x_curr + max(4, (cw - txt_w) / 2)
+            draw.text((tx, y_curr + 8), val_str, fill=fg_c, font=font_cell)
+            x_curr += cw
+        y_curr += row_h
 
-                if is_total_row:
-                    cell.set_facecolor('#002244')
-                    cell.set_text_props(color='#ffffff', fontweight='bold')
-                elif is_hl:
-                    cell.set_facecolor('#86efac' if val_str == 'YES' else '#fef9c3')
-                    cell.set_text_props(color='#0f172a', fontweight='bold')
-                elif val_str == 'YES' or '(HIT)' in val_str or '(STAR)' in val_str:
-                    cell.set_facecolor('#dcfce7')
-                    cell.set_text_props(color='#15803d', fontweight='bold')
-                elif '(CLOSE)' in val_str or '(GOOD)' in val_str:
-                    cell.set_facecolor('#fef9c3')
-                    cell.set_text_props(color='#a16207', fontweight='bold')
-                elif '(FAR)' in val_str or 'Zero Sale' in val_str:
-                    cell.set_facecolor('#fee2e2')
-                    cell.set_text_props(color='#b91c1c', fontweight='bold')
-                else:
-                    cell.set_facecolor('#ffffff' if r_idx % 2 == 1 else '#f8fafc')
-
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')
-        plt.close(fig)
-        return buf.getvalue()
-    except Exception:
-        return None
-
-def generate_route_matrix_png(df_matrix, display_mode, title_text, subtitle_text, target_map, ordered_skus):
-    try:
-        import matplotlib.pyplot as plt
-        if len(df_matrix) == 0:
-            return None
-        if len(df_matrix) > 50:
-            df_sub = pd.concat([df_matrix.iloc[:49], df_matrix.iloc[[-1]]], ignore_index=True)
-        else:
-            df_sub = df_matrix.copy()
-            
-        n_rows = len(df_sub)
-        n_cols = len(df_sub.columns)
-        
-        fig_w = max(17, n_cols * 0.75)
-        fig_h = max(4.5, n_rows * 0.35 + 1.8)
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
-        ax.axis('off')
-        fig.patch.set_facecolor('#f8fafc')
-        
-        plt.text(0.01, 0.965, strip_emojis_for_png(title_text), fontsize=14, fontweight='bold', color='#002244', transform=fig.transFigure)
-        plt.text(0.01, 0.935, strip_emojis_for_png(subtitle_text), fontsize=9.5, color='#475569', transform=fig.transFigure)
-        
-        cols = [strip_emojis_for_png(c) for c in df_sub.columns]
-        table_data = [[strip_emojis_for_png(v) for v in r] for r in df_sub.values.tolist()]
-        
-        col_widths = []
-        for idx, c in enumerate(cols):
-            if idx == 0:
-                col_widths.append(0.045)
-            elif idx == 1:
-                col_widths.append(0.14)
-            elif idx == 2:
-                col_widths.append(0.065)
-            elif idx == n_cols - 1:
-                col_widths.append(0.05)
-            else:
-                col_widths.append((1.0 - 0.30) / max(1, (n_cols - 4)))
-                
-        table = ax.table(
-            cellText=table_data,
-            colLabels=cols,
-            colWidths=col_widths,
-            loc='center',
-            cellLoc='center',
-            bbox=[0.0, 0.0, 1.0, 0.90]
-        )
-        table.auto_set_font_size(False)
-        table.set_fontsize(7.5)
-        
-        short_to_full = {s_lbl: f_key for s_lbl, f_key in ordered_skus}
-        
-        for (row_idx, col_idx), cell in table.get_celld().items():
-            cell.set_edgecolor('#cbd5e1')
-            if row_idx == 0:
-                cell.set_facecolor('#002244')
-                cell.set_text_props(color='white', fontweight='bold')
-            elif row_idx == n_rows:
-                cell.set_facecolor('#002244')
-                cell.set_text_props(color='#ffffff', fontweight='bold')
-                if col_idx == 1:
-                    cell.get_text().set_ha('left')
-            else:
-                if col_idx == 1:
-                    cell.get_text().set_ha('left')
-                if col_idx in [0, 1, 2, n_cols - 1]:
-                    cell.set_facecolor('#ffffff' if row_idx % 2 == 1 else '#f8fafc')
-                    if col_idx == n_cols - 1:
-                        cell.set_text_props(color='#004B93', fontweight='bold')
-                else:
-                    raw_val = str(table_data[row_idx - 1][col_idx])
-                    mapped_cnt = float(table_data[row_idx - 1][2].split('/')[1].strip())
-                    col_name = cols[col_idx]
-                    full_k = short_to_full.get(col_name, "")
-                    tgt_p = target_map.get(full_k, 0.5) * 100.0
-                    
-                    if raw_val in ["", "-"]:
-                        cell.set_facecolor('#fff1f2')
-                        cell.set_text_props(color='#e11d48', fontweight='bold')
-                    else:
-                        num_v = float(raw_val.replace('%', ''))
-                        pen_p = num_v if display_mode == "Percentage (%)" else (num_v / mapped_cnt * 100.0 if mapped_cnt > 0 else 0.0)
-                        if pen_p >= tgt_p:
-                            cell.set_facecolor('#dcfce7')
-                            cell.set_text_props(color='#15803d', fontweight='bold')
-                        elif pen_p >= (tgt_p - 15):
-                            cell.set_facecolor('#f0fdf4')
-                            cell.set_text_props(color='#166534', fontweight='bold')
-                        else:
-                            cell.set_facecolor('#fefce8')
-                            cell.set_text_props(color='#b45309', fontweight='bold')
-                            
-        buf = io.BytesIO()
-        plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')
-        plt.close(fig)
-        return buf.getvalue()
-    except Exception:
-        return None
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
 
 def load_target_data(target_bytes):
     if target_bytes is not None:
@@ -1101,7 +1038,7 @@ if uploaded_sales is not None:
 
     common_sub = f"Filter: {sel_dist} | {sel_sdm} | Planned: {total_planned_outlets:,} | Billed: {billed_outlets:,} ({overall_pen_pct:.1f}%) | SKU/Bill: {avg_sku_per_bill:.2f}"
 
-    # 6. ALL TABS (EACH TAB NOW HAS ITS OWN PNG IMAGE DOWNLOAD BUTTON!)
+    # 6. ALL TABS (EVERY TAB HAS A GUARANTEED PNG DOWNLOAD BUTTON AT TOP RIGHT!)
     tab_r_rows, tab_r_cols, tab_summary, tab_pack, tab_booker, tab_outlets = st.tabs([
         "📊 Routes / Rows Matrix",
         "📋 Routes / Cols Matrix",
@@ -1115,7 +1052,7 @@ if uploaded_sales is not None:
     # TAB 1: ROUTES / ROWS MATRIX
     # ==============================================================================
     with tab_r_rows:
-        m_top1, m_top2, m_top3, m_top4 = st.columns([1.4, 1.7, 1.3, 1.2])
+        m_top1, m_top2, m_top3, m_top4 = st.columns([1.3, 1.7, 1.3, 1.3])
         with m_top1:
             st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>🗺️ Coverage Matrix</div>", unsafe_allow_html=True)
         with m_top2:
@@ -1276,9 +1213,8 @@ if uploaded_sales is not None:
         df_png_matrix = pd.DataFrame(png_matrix_rows)
 
         with m_top4:
-            png_m1 = generate_route_matrix_png(df_png_matrix, display_metric_rows, f"RETAIL COVERAGE MATRIX ({matrix_group_by.upper()} - {display_metric_rows.upper()})", common_sub, target_mapping, all_ordered_skus)
-            if png_m1:
-                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m1, file_name=f"Pepsi_Matrix_{matrix_group_by.replace(' ', '_')}.png", mime="image/png", key="dl_png_tab1", use_container_width=True)
+            png_m1 = create_pil_table_png(df_png_matrix, f"RETAIL COVERAGE MATRIX ({matrix_group_by.upper()} - {display_metric_rows.upper()})", common_sub, left_align_cols=[1])
+            st.download_button("🖼️ Download Tab Image (PNG)", data=png_m1, file_name=f"Pepsi_Matrix_{matrix_group_by.replace(' ', '_')}.png", mime="image/png", key="dl_png_tab1", use_container_width=True)
 
         st.markdown("".join(r_html), unsafe_allow_html=True)
 
@@ -1286,7 +1222,7 @@ if uploaded_sales is not None:
     # TAB 2: ROUTES / COLS MATRIX
     # ==============================================================================
     with tab_r_cols:
-        c_top1, c_top2, c_top3 = st.columns([2.2, 1.5, 1.3])
+        c_top1, c_top2, c_top3 = st.columns([2.1, 1.5, 1.4])
         with c_top1:
             st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>📋 Transposed Retail Route Coverage Matrix</div>", unsafe_allow_html=True)
         with c_top2:
@@ -1370,9 +1306,8 @@ if uploaded_sales is not None:
             df_export_routes_cols = pd.DataFrame(export_cols_list)
 
             with c_top3:
-                png_m2 = render_generic_table_png(df_export_routes_cols, f"TRANSPOSED ROUTE COVERAGE MATRIX ({display_metric_cols.upper()})", common_sub, left_align_cols=[0])
-                if png_m2:
-                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m2, file_name="Pepsi_Routes_Cols_Matrix.png", mime="image/png", key="dl_png_tab2", use_container_width=True)
+                png_m2 = create_pil_table_png(df_export_routes_cols, f"TRANSPOSED ROUTE COVERAGE MATRIX ({display_metric_cols.upper()})", common_sub, left_align_cols=[0])
+                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m2, file_name="Pepsi_Routes_Cols_Matrix.png", mime="image/png", key="dl_png_tab2", use_container_width=True)
 
             st.markdown("".join(c_html), unsafe_allow_html=True)
         else:
@@ -1382,7 +1317,7 @@ if uploaded_sales is not None:
     # TAB 3: SKU TARGET SUMMARY
     # ==============================================================================
     with tab_summary:
-        q_col1, q_col2, q_col3 = st.columns([2.1, 1.5, 1.4])
+        q_col1, q_col2, q_col3 = st.columns([2.0, 1.5, 1.5])
         with q_col1:
             sku_view_filter = st.radio(
                 "Filter SKUs:", 
@@ -1407,14 +1342,13 @@ if uploaded_sales is not None:
             filtered_df_sku = filtered_df_sku[~filtered_df_sku['Status'].str.contains("Hit")]
 
         with q_col3:
-            png_m3 = render_generic_table_png(
+            png_m3 = create_pil_table_png(
                 filtered_df_sku[["SKU / Group Name", "Target %", "Productive", "Actual Pen %", "Gap %", "Remaining to Achieve", "Lagging Route", "VS Last Read", "Status"]],
                 f"SKU TARGET & PENETRATION SUMMARY ({sku_view_filter.upper()})",
                 common_sub,
                 left_align_cols=[0, 5, 6]
             )
-            if png_m3:
-                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m3, file_name="Pepsi_SKU_Target_Summary.png", mime="image/png", key="dl_png_tab3", use_container_width=True)
+            st.download_button("🖼️ Download Tab Image (PNG)", data=png_m3, file_name="Pepsi_SKU_Target_Summary.png", mime="image/png", key="dl_png_tab3", use_container_width=True)
 
         html_lines = [
             f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2; margin-top:4px;">',
@@ -1498,14 +1432,13 @@ if uploaded_sales is not None:
             pack_agg = pack_agg.sort_values(by='Productive_Outlets', ascending=False)
 
             with pk_top2:
-                png_m4 = render_generic_table_png(
+                png_m4 = create_pil_table_png(
                     pack_agg[["PKG_NAME", "Productive_Outlets", "Total_Cases", "Invoices", "Penetration %", "Drop Size (Cases)"]],
                     "PACK-WISE PENETRATION & VOLUME REPORT",
                     common_sub,
                     left_align_cols=[0]
                 )
-                if png_m4:
-                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m4, file_name="Pepsi_Pack_Penetration.png", mime="image/png", key="dl_png_tab4", use_container_width=True)
+                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m4, file_name="Pepsi_Pack_Penetration.png", mime="image/png", key="dl_png_tab4", use_container_width=True)
 
             pack_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
@@ -1587,14 +1520,13 @@ if uploaded_sales is not None:
             df_booker_score.insert(0, 'Rank #', range(1, len(df_booker_score) + 1))
 
             with bk_top2:
-                png_m5 = render_generic_table_png(
+                png_m5 = create_pil_table_png(
                     df_booker_score.drop(columns=['Pen_Num']),
                     "BOOKER / PRE-SELLER (PSR) SCORECARD",
                     common_sub,
                     left_align_cols=[1, 2]
                 )
-                if png_m5:
-                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m5, file_name="Pepsi_Booker_Scorecard.png", mime="image/png", key="dl_png_tab5", use_container_width=True)
+                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m5, file_name="Pepsi_Booker_Scorecard.png", mime="image/png", key="dl_png_tab5", use_container_width=True)
 
             bkr_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
@@ -1758,17 +1690,15 @@ if uploaded_sales is not None:
                     use_container_width=True
                 )
         with info_b3:
-            if len(df_booking_matrix) > 0:
-                png_m6 = render_generic_table_png(
-                    df_booking_matrix,
-                    f"PSR BOOKING MATRIX (DAY: {selected_day.upper()} | FOCUS: {highlight_sku})",
-                    common_sub,
-                    left_align_cols=[1, 2],
-                    highlight_col=hl_short_col,
-                    max_rows=70
-                )
-                if png_m6:
-                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m6, file_name=f"PSR_Booking_Sheet_{selected_day}.png", mime="image/png", key="dl_png_tab6", use_container_width=True)
+            png_m6 = create_pil_table_png(
+                df_booking_matrix,
+                f"PSR BOOKING MATRIX (DAY: {selected_day.upper()} | FOCUS: {highlight_sku})",
+                common_sub,
+                left_align_cols=[1, 2],
+                highlight_col=hl_short_col,
+                max_rows=70
+            )
+            st.download_button("🖼️ Download Tab Image (PNG)", data=png_m6, file_name=f"PSR_Booking_Sheet_{selected_day}.png", mime="image/png", key="dl_png_tab6", use_container_width=True)
 
         if outlet_view_style == "📋 Outlet × SKU Matrix (Booking Sheet)":
             if len(filtered_outlets) > 0:
