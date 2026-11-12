@@ -136,63 +136,84 @@ def clean_id_str(val):
     except Exception:
         return str(val).strip()
 
-def generate_table_png(df_sku, title_text, subtitle_text):
+def strip_emojis_for_png(text):
+    s = str(text)
+    replacements = {
+        "🎯": "(HIT)", "⚠️": "(CLOSE)", "❌": "(FAR)", "⭐": "(STAR)",
+        "👍": "(GOOD)", "✅": "(OK)", "✓": "YES", "Σ": "TOTAL"
+    }
+    for k, v in replacements.items():
+        s = s.replace(k, v)
+    return s.encode('ascii', 'ignore').decode('ascii').strip()
+
+# Universal High-Resolution PNG Table Renderer for ANY Tab
+def render_generic_table_png(df_table, title_text, subtitle_text, left_align_cols=None, highlight_col=None, max_rows=65):
     try:
         import matplotlib.pyplot as plt
-        fig, ax = plt.subplots(figsize=(15, max(4, len(df_sku) * 0.42 + 1.8)))
+        if df_table is None or len(df_table) == 0:
+            return None
+        df_sub = df_table.head(max_rows).copy()
+        n_rows, n_cols = df_sub.shape
+        left_align_cols = left_align_cols or []
+
+        fig_w = max(13, n_cols * 0.95)
+        fig_h = max(4.2, n_rows * 0.36 + 1.8)
+        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
         ax.axis('off')
         fig.patch.set_facecolor('#f8fafc')
-        plt.text(0.01, 0.96, title_text, fontsize=14, fontweight='bold', color='#002244', transform=fig.transFigure)
-        plt.text(0.01, 0.925, subtitle_text, fontsize=9.5, color='#475569', transform=fig.transFigure)
-        
-        cols = ["SKU / Group Name", "Target %", "Productive", "Actual Pen %", "Gap %", "Remaining to Achieve", "Lagging Route", "VS Last Read", "Status"]
-        clean_rows = []
-        for _, r in df_sku.iterrows():
-            clean_status = str(r["Status"]).replace("🎯", "(HIT)").replace("⚠️", "(CLOSE)").replace("❌", "(FAR)")
-            clean_rows.append([
-                r["SKU / Group Name"],
-                r["Target %"],
-                f"{r['Productive']:,}",
-                r["Actual Pen %"],
-                r["Gap %"],
-                r["Remaining to Achieve"].replace("🎯", ""),
-                r["Lagging Route"],
-                str(r["VS Last Read"]).replace("🎯", ""),
-                clean_status
-            ])
-            
+
+        plt.text(0.01, 0.965, strip_emojis_for_png(title_text), fontsize=13.5, fontweight='bold', color='#002244', transform=fig.transFigure)
+        plt.text(0.01, 0.935, strip_emojis_for_png(subtitle_text), fontsize=9.5, color='#475569', transform=fig.transFigure)
+
+        cols = [strip_emojis_for_png(c) for c in df_sub.columns]
+        clean_data = [[strip_emojis_for_png(val) for val in row] for row in df_sub.values.tolist()]
+
         table = ax.table(
-            cellText=clean_rows,
+            cellText=clean_data,
             colLabels=cols,
             loc='center',
             cellLoc='center',
-            bbox=[0.0, 0.0, 1.0, 0.89]
+            bbox=[0.0, 0.0, 1.0, 0.90]
         )
         table.auto_set_font_size(False)
-        table.set_fontsize(8)
-        
-        for (row_idx, col_idx), cell in table.get_celld().items():
+        table.set_fontsize(7.5 if n_cols > 12 else 8.5)
+
+        hl_clean = strip_emojis_for_png(highlight_col) if highlight_col else None
+
+        for (r_idx, c_idx), cell in table.get_celld().items():
             cell.set_edgecolor('#cbd5e1')
-            if row_idx == 0:
-                cell.set_facecolor('#002244')
-                cell.set_text_props(color='white', fontweight='bold')
+            col_name = cols[c_idx]
+            is_hl = (hl_clean is not None and col_name == hl_clean)
+
+            if r_idx == 0:
+                cell.set_facecolor('#facc15' if is_hl else '#002244')
+                cell.set_text_props(color='#0f172a' if is_hl else '#ffffff', fontweight='bold')
             else:
-                if col_idx in [0, 5, 6]:
+                val_str = clean_data[r_idx - 1][c_idx]
+                first_col_val = clean_data[r_idx - 1][0]
+                is_total_row = ("TOTAL" in first_col_val.upper() or (n_cols > 1 and "TOTAL" in clean_data[r_idx - 1][1].upper()))
+
+                if c_idx in left_align_cols:
                     cell.get_text().set_ha('left')
-                st_val = str(clean_rows[row_idx - 1][8])
-                if col_idx == 8:
-                    if "HIT" in st_val:
-                        cell.set_facecolor('#dcfce7')
-                        cell.set_text_props(color='#15803d', fontweight='bold')
-                    elif "CLOSE" in st_val:
-                        cell.set_facecolor('#fef9c3')
-                        cell.set_text_props(color='#a16207', fontweight='bold')
-                    else:
-                        cell.set_facecolor('#fee2e2')
-                        cell.set_text_props(color='#b91c1c', fontweight='bold')
+
+                if is_total_row:
+                    cell.set_facecolor('#002244')
+                    cell.set_text_props(color='#ffffff', fontweight='bold')
+                elif is_hl:
+                    cell.set_facecolor('#86efac' if val_str == 'YES' else '#fef9c3')
+                    cell.set_text_props(color='#0f172a', fontweight='bold')
+                elif val_str == 'YES' or '(HIT)' in val_str or '(STAR)' in val_str:
+                    cell.set_facecolor('#dcfce7')
+                    cell.set_text_props(color='#15803d', fontweight='bold')
+                elif '(CLOSE)' in val_str or '(GOOD)' in val_str:
+                    cell.set_facecolor('#fef9c3')
+                    cell.set_text_props(color='#a16207', fontweight='bold')
+                elif '(FAR)' in val_str or 'Zero Sale' in val_str:
+                    cell.set_facecolor('#fee2e2')
+                    cell.set_text_props(color='#b91c1c', fontweight='bold')
                 else:
-                    cell.set_facecolor('#ffffff' if row_idx % 2 == 1 else '#f8fafc')
-                    
+                    cell.set_facecolor('#ffffff' if r_idx % 2 == 1 else '#f8fafc')
+
         buf = io.BytesIO()
         plt.savefig(buf, format='png', dpi=200, bbox_inches='tight')
         plt.close(fig)
@@ -219,11 +240,11 @@ def generate_route_matrix_png(df_matrix, display_mode, title_text, subtitle_text
         ax.axis('off')
         fig.patch.set_facecolor('#f8fafc')
         
-        plt.text(0.01, 0.965, title_text, fontsize=14, fontweight='bold', color='#002244', transform=fig.transFigure)
-        plt.text(0.01, 0.935, subtitle_text, fontsize=9.5, color='#475569', transform=fig.transFigure)
+        plt.text(0.01, 0.965, strip_emojis_for_png(title_text), fontsize=14, fontweight='bold', color='#002244', transform=fig.transFigure)
+        plt.text(0.01, 0.935, strip_emojis_for_png(subtitle_text), fontsize=9.5, color='#475569', transform=fig.transFigure)
         
-        cols = list(df_sub.columns)
-        table_data = df_sub.values.tolist()
+        cols = [strip_emojis_for_png(c) for c in df_sub.columns]
+        table_data = [[strip_emojis_for_png(v) for v in r] for r in df_sub.values.tolist()]
         
         col_widths = []
         for idx, c in enumerate(cols):
@@ -275,7 +296,7 @@ def generate_route_matrix_png(df_matrix, display_mode, title_text, subtitle_text
                     full_k = short_to_full.get(col_name, "")
                     tgt_p = target_map.get(full_k, 0.5) * 100.0
                     
-                    if raw_val == "—":
+                    if raw_val in ["", "-"]:
                         cell.set_facecolor('#fff1f2')
                         cell.set_text_props(color='#e11d48', fontweight='bold')
                     else:
@@ -402,7 +423,6 @@ def load_sales_data(sales_bytes):
     s_col = get_best_col(df.columns, ['salesrawcases', 'salescases', 'rawcases', 'cases', 'saleqty'])
     standard_df['Sales_Raw Cases'] = pd.to_numeric(df[s_col], errors='coerce').fillna(0.0) if s_col else 0.0
 
-    # STRICT RETAIL FILTER: Remove Wholesale and Counter Sale completely
     standard_df = standard_df[~standard_df['PJP_Name'].apply(is_non_retail_route)].copy()
 
     standard_df['Target_Product_Group'] = standard_df['Product NAME'].apply(map_product_group)
@@ -451,7 +471,6 @@ def load_pjp_data(pjp_bytes, df_sales_ref=None):
             pjp_std['Route_Only_Name'] = df_pjp[r_col].astype(str).str.strip() if r_col else ""
             pjp_std['PJP_Name'] = pjp_std['Route_Only_Name']
 
-        # STRICT RETAIL FILTER: Remove Wholesale and Counter Sale completely from PJP
         pjp_std = pjp_std[~pjp_std['PJP_Name'].apply(is_non_retail_route)].copy()
         
         d_code_col = get_best_col(df_pjp.columns, ['distid', 'distcode', 'distributorid'])
@@ -512,7 +531,7 @@ uploaded_pjp = st.sidebar.file_uploader("3. PJP Master File (Optional Override)"
 repo_target_bytes, repo_target_name = find_repo_file(["targets.xlsx", "Targets.xlsx", "TARGETS.xlsx"])
 repo_pjp_bytes, repo_pjp_name = find_repo_file(["pjp.xlsx", "PJP.xlsx", "PJP_Master.xlsx", "pjp_master.xlsx"])
 
-# Original Pepsi Corporate Theme + Modern SaaS Cards & Sticky Filters
+# Original Pepsi Corporate Theme
 st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
@@ -542,7 +561,6 @@ st.markdown("""
         pointer-events: auto !important;
     }
     
-    /* Original PepsiCo Corporate Header Container */
     .pepsi-header-container {
         display: flex;
         align-items: center;
@@ -597,7 +615,6 @@ st.markdown("""
         border-radius: 20px;
     }
 
-    /* SaaS KPI Cards */
     .saas-kpi {
         background: #ffffff;
         border: 1px solid #bae6fd;
@@ -640,7 +657,6 @@ st.markdown("""
         overflow: hidden;
     }
 
-    /* Smart 3-Pill Live Intelligence Strip */
     .saas-alert {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -655,7 +671,6 @@ st.markdown("""
         box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
 
-    /* Leaderboard Cards */
     .lead-card-top {
         background: #ffffff;
         border: 1px solid #86efac;
@@ -691,7 +706,6 @@ st.markdown("""
         color: #334155;
     }
 
-    /* Sticky Filter & Font Container */
     div[data-testid="stVerticalBlockBorderWrapper"] {
         background-color: rgba(255, 255, 255, 0.98) !important;
         backdrop-filter: blur(8px) !important;
@@ -705,7 +719,6 @@ st.markdown("""
         pointer-events: auto !important;
     }
 
-    /* Navigation Tabs */
     .stTabs [data-baseweb="tab-list"] {
         gap: 6px;
         margin-top: 6px;
@@ -758,7 +771,6 @@ if uploaded_sales is not None:
 
     total_raw_rows = len(df_sales)
 
-    # PepsiCo Header Bar
     header_html = (
         f'<div class="pepsi-header-container">'
         f'<div class="pepsi-header-left">'
@@ -1068,7 +1080,6 @@ if uploaded_sales is not None:
     badge_pad = f"{max(1, pad_v // 2)}px {max(4, pad_h // 2)}px"
     badge_sz = f"{max(8, global_font_px - 2)}px"
 
-    # Shared Active Series
     active_series = []
     all_ordered_skus = []
     for s_title, s_color, s_items in SKU_SERIES_GROUPS:
@@ -1077,7 +1088,6 @@ if uploaded_sales is not None:
             active_series.append((s_title, s_color, valid_items))
             all_ordered_skus.extend(valid_items)
 
-    # Dynamic Bottom Total Row Label based on selected filter
     if sel_route != "All Filtered Routes":
         total_row_label = f"TOTAL ({sel_route})"
     elif sel_sdm != "All SDMs":
@@ -1089,23 +1099,25 @@ if uploaded_sales is not None:
     else:
         total_row_label = "GRAND TOTAL (ALL RETAIL)"
 
-    # 6. ALL TABS
+    common_sub = f"Filter: {sel_dist} | {sel_sdm} | Planned: {total_planned_outlets:,} | Billed: {billed_outlets:,} ({overall_pen_pct:.1f}%) | SKU/Bill: {avg_sku_per_bill:.2f}"
+
+    # 6. ALL TABS (EACH TAB NOW HAS ITS OWN PNG IMAGE DOWNLOAD BUTTON!)
     tab_r_rows, tab_r_cols, tab_summary, tab_pack, tab_booker, tab_outlets = st.tabs([
         "📊 Routes / Rows Matrix",
         "📋 Routes / Cols Matrix",
         "🎯 SKU Target Summary", 
         "📦 Pack-Wise Penetration",
         "👤 Booker (PSR) Scorecard", 
-        "🔍 Outlets Missing SKU & Brand"
+        "🔍 Zero-Sale & Outlet SKU Matrix"
     ])
 
     # ==============================================================================
-    # TAB 1: ROUTES / ROWS MATRIX (WITH ROUTE / PSR / SDM TOGGLE + BOTTOM TOTAL ROW)
+    # TAB 1: ROUTES / ROWS MATRIX
     # ==============================================================================
     with tab_r_rows:
-        m_top1, m_top2, m_top3 = st.columns([1.8, 1.8, 1.4])
+        m_top1, m_top2, m_top3, m_top4 = st.columns([1.4, 1.7, 1.3, 1.2])
         with m_top1:
-            st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>🗺️ Retail Coverage Matrix</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>🗺️ Coverage Matrix</div>", unsafe_allow_html=True)
         with m_top2:
             matrix_group_by = st.radio(
                 "View Level:",
@@ -1226,7 +1238,7 @@ if uploaded_sales is not None:
                 f'</tr>'
             )
 
-        # BOTTOM SUMMARY / GRAND TOTAL ROW FOR ACTIVE SELECTION
+        # BOTTOM GRAND TOTAL ROW
         tot_row_c = {"ID": "Σ", name_col_hdr: total_row_label, "Covered": billed_outlets, "Mapped": total_planned_outlets}
         tot_row_p = {"ID": "Σ", name_col_hdr: total_row_label, "Covered": billed_outlets, "Mapped": total_planned_outlets}
         tot_row_png = {"ID": "Σ", "Name": total_row_label[:22], "Cov/Map": f"{billed_outlets} / {total_planned_outlets}"}
@@ -1259,17 +1271,22 @@ if uploaded_sales is not None:
         )
 
         r_html.append('</tbody></table></div>')
-        st.markdown("".join(r_html), unsafe_allow_html=True)
-
         df_export_routes_count = pd.DataFrame(export_rows_count)
         df_export_routes_pct = pd.DataFrame(export_rows_pct)
         df_png_matrix = pd.DataFrame(png_matrix_rows)
+
+        with m_top4:
+            png_m1 = generate_route_matrix_png(df_png_matrix, display_metric_rows, f"RETAIL COVERAGE MATRIX ({matrix_group_by.upper()} - {display_metric_rows.upper()})", common_sub, target_mapping, all_ordered_skus)
+            if png_m1:
+                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m1, file_name=f"Pepsi_Matrix_{matrix_group_by.replace(' ', '_')}.png", mime="image/png", key="dl_png_tab1", use_container_width=True)
+
+        st.markdown("".join(r_html), unsafe_allow_html=True)
 
     # ==============================================================================
     # TAB 2: ROUTES / COLS MATRIX
     # ==============================================================================
     with tab_r_cols:
-        c_top1, c_top2 = st.columns([2.5, 1.5])
+        c_top1, c_top2, c_top3 = st.columns([2.2, 1.5, 1.3])
         with c_top1:
             st.markdown(f"<div style='padding-top:4px;font-size:13px;font-weight:800;color:#0f172a;'>📋 Transposed Retail Route Coverage Matrix</div>", unsafe_allow_html=True)
         with c_top2:
@@ -1334,31 +1351,38 @@ if uploaded_sales is not None:
                         rm = route_planned.get(r_full, 0)
                         sc = route_sku_billed.get((full_key, r_full), 0)
                         tot_sku_sold += sc
-                        r_dict[r_full] = sc
                         pen_p = (sc / rm * 100) if rm > 0 else 0.0
                         if sc == 0:
                             disp_v, bg_c, fg_c = "—", "#fff1f2", "#e11d48"
                         else:
                             disp_v = f"{sc}" if display_metric_cols == "Count View" else f"{pen_p:.0f}%"
                             bg_c, fg_c = "#f0fdf4", "#15803d"
+                        r_dict[r_full] = disp_v if sc > 0 else "-"
                         c_html.append(f'<td style="padding:{pad_v}px 4px; border:1px solid #e2e8f0; text-align:center; background:{bg_c}; color:{fg_c}; font-weight:800;">{disp_v}</td>')
                     tot_pen_all = (tot_sku_sold / total_planned_outlets * 100) if total_planned_outlets > 0 else 0.0
                     tot_disp = f"{tot_sku_sold:,}" if display_metric_cols == "Count View" else f"{tot_pen_all:.1f}%"
-                    r_dict["TOTAL COVERED"] = tot_sku_sold
+                    r_dict["TOTAL COVERED"] = tot_disp
                     export_cols_list.append(r_dict)
                     c_html.append(f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; font-weight:800; background:#002244; color:#ffffff;">{tot_disp}</td>')
                     c_html.append('</tr>')
 
             c_html.append('</tbody></table></div>')
-            st.markdown("".join(c_html), unsafe_allow_html=True)
+            df_export_routes_cols = pd.DataFrame(export_cols_list)
 
-        df_export_routes_cols = pd.DataFrame(export_cols_list)
+            with c_top3:
+                png_m2 = render_generic_table_png(df_export_routes_cols, f"TRANSPOSED ROUTE COVERAGE MATRIX ({display_metric_cols.upper()})", common_sub, left_align_cols=[0])
+                if png_m2:
+                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m2, file_name="Pepsi_Routes_Cols_Matrix.png", mime="image/png", key="dl_png_tab2", use_container_width=True)
+
+            st.markdown("".join(c_html), unsafe_allow_html=True)
+        else:
+            df_export_routes_cols = pd.DataFrame()
 
     # ==============================================================================
-    # TAB 3: SKU TARGET SUMMARY (WITH RESTORED "VS LAST READ" COLUMN)
+    # TAB 3: SKU TARGET SUMMARY
     # ==============================================================================
     with tab_summary:
-        q_col1, q_col2 = st.columns([2.5, 1.5])
+        q_col1, q_col2, q_col3 = st.columns([2.1, 1.5, 1.4])
         with q_col1:
             sku_view_filter = st.radio(
                 "Filter SKUs:", 
@@ -1382,8 +1406,18 @@ if uploaded_sales is not None:
         elif sku_view_filter == "⚠️ Miss Only":
             filtered_df_sku = filtered_df_sku[~filtered_df_sku['Status'].str.contains("Hit")]
 
+        with q_col3:
+            png_m3 = render_generic_table_png(
+                filtered_df_sku[["SKU / Group Name", "Target %", "Productive", "Actual Pen %", "Gap %", "Remaining to Achieve", "Lagging Route", "VS Last Read", "Status"]],
+                f"SKU TARGET & PENETRATION SUMMARY ({sku_view_filter.upper()})",
+                common_sub,
+                left_align_cols=[0, 5, 6]
+            )
+            if png_m3:
+                st.download_button("🖼️ Download Tab Image (PNG)", data=png_m3, file_name="Pepsi_SKU_Target_Summary.png", mime="image/png", key="dl_png_tab3", use_container_width=True)
+
         html_lines = [
-            f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
+            f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2; margin-top:4px;">',
             '<thead>',
             '<tr style="background:#002244; color:#ffffff; font-weight:800;">',
             f'<th style="padding:{pad_v+2}px {pad_h}px; text-align:left; border:1px solid #003366;">SKU / Group Name</th>',
@@ -1445,7 +1479,9 @@ if uploaded_sales is not None:
     # TAB 4: PACK-WISE PENETRATION
     # ==============================================================================
     with tab_pack:
-        st.subheader("📦 Overall Pack-Wise Penetration & Volume (Retail)")
+        pk_top1, pk_top2 = st.columns([3.5, 1.5])
+        with pk_top1:
+            st.subheader("📦 Overall Pack-Wise Penetration & Volume (Retail)")
         valid_packs = f_sales[f_sales['PKG_NAME'] != ""]
         pack_agg = pd.DataFrame()
         if len(valid_packs) > 0:
@@ -1458,7 +1494,18 @@ if uploaded_sales is not None:
             pack_agg['Pen_Num'] = ((pack_agg['Productive_Outlets'] / total_planned_outlets) * 100).round(1)
             pack_agg['Penetration %'] = pack_agg['Pen_Num'].astype(str) + "%"
             pack_agg['Drop Size (Cases)'] = (pack_agg['Total_Cases'] / pack_agg['Productive_Outlets']).round(2)
+            pack_agg['Total_Cases'] = pack_agg['Total_Cases'].round(1)
             pack_agg = pack_agg.sort_values(by='Productive_Outlets', ascending=False)
+
+            with pk_top2:
+                png_m4 = render_generic_table_png(
+                    pack_agg[["PKG_NAME", "Productive_Outlets", "Total_Cases", "Invoices", "Penetration %", "Drop Size (Cases)"]],
+                    "PACK-WISE PENETRATION & VOLUME REPORT",
+                    common_sub,
+                    left_align_cols=[0]
+                )
+                if png_m4:
+                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m4, file_name="Pepsi_Pack_Penetration.png", mime="image/png", key="dl_png_tab4", use_container_width=True)
 
             pack_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
@@ -1494,7 +1541,9 @@ if uploaded_sales is not None:
     # TAB 5: BOOKER SCORECARD
     # ==============================================================================
     with tab_booker:
-        st.subheader("👤 Booker / Pre-Seller (PSR) Scorecard (Retail)")
+        bk_top1, bk_top2 = st.columns([3.5, 1.5])
+        with bk_top1:
+            st.subheader("👤 Booker / Pre-Seller (PSR) Scorecard (Retail)")
         booker_rows = []
         booker_iter = f_pjp.groupby('BOOKER_Name', observed=True) if f_pjp is not None else f_sales.groupby('BOOKER_Name', observed=True)
         
@@ -1537,6 +1586,16 @@ if uploaded_sales is not None:
             df_booker_score = df_booker_score.sort_values(by=['Pen_Num', 'Hit Rate %'], ascending=False).reset_index(drop=True)
             df_booker_score.insert(0, 'Rank #', range(1, len(df_booker_score) + 1))
 
+            with bk_top2:
+                png_m5 = render_generic_table_png(
+                    df_booker_score.drop(columns=['Pen_Num']),
+                    "BOOKER / PRE-SELLER (PSR) SCORECARD",
+                    common_sub,
+                    left_align_cols=[1, 2]
+                )
+                if png_m5:
+                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m5, file_name="Pepsi_Booker_Scorecard.png", mime="image/png", key="dl_png_tab5", use_container_width=True)
+
             bkr_html = [
                 f'<table style="width:100%; border-collapse:collapse; background:#ffffff; border-radius:8px; overflow:hidden; border:1px solid #cbd5e1; font-size:{global_font_px}px; line-height:1.2;">',
                 '<thead><tr style="background:#002244; color:#ffffff; font-weight:800;">',
@@ -1577,10 +1636,10 @@ if uploaded_sales is not None:
             st.markdown("".join(bkr_html), unsafe_allow_html=True)
 
     # ==============================================================================
-    # TAB 6: OUTLETS MISSING SKU & BRAND FILTER
+    # TAB 6: ZERO-SALE & OUTLET × SKU BOOKING MATRIX
     # ==============================================================================
     with tab_outlets:
-        st.subheader("🔍 Retail Outlets Missing SKU & Brand Gap Analysis")
+        st.subheader("🔍 PSR Booking Sheet: Outlet × SKU Matrix & Gap Filter")
         all_target_skus = set(target_mapping.keys())
         total_sku_count = len(all_target_skus)
         core_brands_set = set(CORE_BRANDS)
@@ -1624,81 +1683,189 @@ if uploaded_sales is not None:
         outlet_meta['Missing_Brands_Raw'] = [d[4] for d in details]
         outlet_meta['Billing_Status'] = [d[5] for d in details]
 
-        f_col1, f_col2, f_col3, f_col4, f_col5 = st.columns([1.3, 1.3, 1.1, 1.3, 1.1])
+        v_col1, v_col2, v_col3 = st.columns([1.8, 1.8, 1.4])
+        with v_col1:
+            outlet_view_style = st.radio(
+                "View Format:",
+                ["📋 Outlet × SKU Matrix (Booking Sheet)", "📝 Detailed List View"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+        with v_col2:
+            highlight_sku = st.selectbox(
+                "🎯 Highlight Pack Column (SKU):",
+                ["None (Normal View)"] + [full_k for _, full_k in all_ordered_skus]
+            )
+        with v_col3:
+            only_missing_highlighted = st.checkbox("Show Only Missing This Pack", value=False, disabled=(highlight_sku == "None (Normal View)"))
+
+        f_col1, f_col2, f_col3, f_col4 = st.columns([1.1, 1.2, 1.4, 1.3])
         with f_col1:
-            selected_missing_brand = st.selectbox("🏷️ Missing Brand:", ["All Brands"] + CORE_BRANDS)
+            selected_day = st.selectbox("📅 Planned Day (PJP):", ["All Days"] + DAYS_LIST)
         with f_col2:
-            selected_pack = st.selectbox("🎯 Filter Bought SKU:", ["All Outlets (Any SKU)"] + sorted(list(target_mapping.keys())))
+            selected_missing_brand = st.selectbox("🏷️ Missing Brand:", ["All Brands"] + CORE_BRANDS)
         with f_col3:
-            selected_day = st.selectbox("📅 Planned Day:", ["All Days"] + DAYS_LIST)
+            missing_range = st.slider("⚠️ Missing SKUs Count:", 0, total_sku_count, (0, total_sku_count), 1)
         with f_col4:
-            missing_range = st.slider("⚠️ Missing SKUs:", 0, total_sku_count, (1, total_sku_count), 1)
-        with f_col5:
-            status_filter = st.selectbox("Billing Status:", ["All Outlets", "Billed Outlets Only", "Zero-Sale Outlets Only"])
+            status_filter = st.selectbox("Billing Status:", ["All Outlets", "Zero-Sale Outlets Only", "Billed Outlets Only"])
 
         filtered_outlets = outlet_meta[(outlet_meta['SKUs_Missing'] >= missing_range[0]) & (outlet_meta['SKUs_Missing'] <= missing_range[1])]
-        if selected_missing_brand != "All Brands":
-            filtered_outlets = filtered_outlets[filtered_outlets['Missing_Brands_Raw'].apply(lambda lst: selected_missing_brand in lst)]
         if selected_day != "All Days" and f_pjp is not None:
             filtered_outlets = filtered_outlets[filtered_outlets[selected_day] == 1]
+        if selected_missing_brand != "All Brands":
+            filtered_outlets = filtered_outlets[filtered_outlets['Missing_Brands_Raw'].apply(lambda lst: selected_missing_brand in lst)]
         if status_filter == "Billed Outlets Only":
             filtered_outlets = filtered_outlets[filtered_outlets['Billing_Status'] == "Billed ✅"]
         elif status_filter == "Zero-Sale Outlets Only":
             filtered_outlets = filtered_outlets[filtered_outlets['Billing_Status'] == "Zero Sale ⚠️"]
-        if selected_pack != "All Outlets (Any SKU)":
-            pack_buyers = set(valid_target_sales[valid_target_sales['Target_Product_Group'] == selected_pack]['Outlet_Code'].unique())
-            filtered_outlets = filtered_outlets[filtered_outlets['Outlet_Code'].isin(pack_buyers)]
+        if highlight_sku != "None (Normal View)" and only_missing_highlighted:
+            filtered_outlets = filtered_outlets[filtered_outlets['Outlet_Code'].apply(lambda oc: highlight_sku not in outlet_bought_sets.get(oc, set()))]
 
-        st.markdown(f"**Found {len(filtered_outlets):,} retail outlets** matching filters.")
-        display_cols = ['Outlet_Code', 'Outlet_Name', 'BOOKER_Name', 'PJP_Name', 'Planned_Days', 'Billing_Status', 'Missing_Brands', 'SKUs_Missing', 'SKUs_Bought', 'Missing_Products_List']
-        st.dataframe(filtered_outlets[display_cols].sort_values(by='SKUs_Missing', ascending=False), use_container_width=True, height=480)
+        filtered_outlets = filtered_outlets.sort_values(by=['PJP_Name', 'SKUs_Missing'], ascending=[True, False])
 
-    # BOTTOM EXPORT BAR: 7-SHEET EXCEL + ROUTE MATRIX PNG + SKU SUMMARY PNG
+        full_to_short_map = {full_k: s_lbl for s_lbl, full_k in all_ordered_skus}
+        hl_short_col = full_to_short_map.get(highlight_sku, None)
+
+        booking_matrix_rows = []
+        for _, orow in filtered_outlets.iterrows():
+            oc = orow['Outlet_Code']
+            b_set = outlet_bought_sets.get(oc, set())
+            b_row = {
+                "Code": oc,
+                "Shop Name": str(orow['Outlet_Name'])[:24],
+                "Route": str(orow['PJP_Name'])[:20],
+                "Day": orow['Planned_Days'],
+                "Packs": f"{len(b_set)}/{total_sku_count}"
+            }
+            for short_lbl, full_key in all_ordered_skus:
+                b_row[short_lbl] = "✓" if full_key in b_set else ""
+            booking_matrix_rows.append(b_row)
+        df_booking_matrix = pd.DataFrame(booking_matrix_rows)
+
+        info_b1, info_b2, info_b3 = st.columns([2.4, 1.3, 1.3])
+        with info_b1:
+            st.markdown(f"**Showing {len(filtered_outlets):,} shops** (Day: **{selected_day}** | Highlight: **{highlight_sku}**)")
+        with info_b2:
+            if len(df_booking_matrix) > 0:
+                b_out = io.BytesIO()
+                with pd.ExcelWriter(b_out, engine='openpyxl') as writer:
+                    df_booking_matrix.to_excel(writer, sheet_name='PSR Booking Matrix', index=False)
+                st.download_button(
+                    label="📥 Download Booking (Excel)",
+                    data=b_out.getvalue(),
+                    file_name=f"PSR_Booking_Matrix_{selected_day}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+        with info_b3:
+            if len(df_booking_matrix) > 0:
+                png_m6 = render_generic_table_png(
+                    df_booking_matrix,
+                    f"PSR BOOKING MATRIX (DAY: {selected_day.upper()} | FOCUS: {highlight_sku})",
+                    common_sub,
+                    left_align_cols=[1, 2],
+                    highlight_col=hl_short_col,
+                    max_rows=70
+                )
+                if png_m6:
+                    st.download_button("🖼️ Download Tab Image (PNG)", data=png_m6, file_name=f"PSR_Booking_Sheet_{selected_day}.png", mime="image/png", key="dl_png_tab6", use_container_width=True)
+
+        if outlet_view_style == "📋 Outlet × SKU Matrix (Booking Sheet)":
+            if len(filtered_outlets) > 0:
+                render_outlets = filtered_outlets.head(350)
+                if len(filtered_outlets) > 350:
+                    st.caption(f"⚡ Screen par pehli 350 dukanon ka matrix dikhaya ja raha hai (Full {len(filtered_outlets):,} shops upar Excel button se download karein).")
+
+                o_html = [
+                    f'<div style="overflow-x:auto; max-height:560px; border-radius:8px; border:1px solid #cbd5e1; box-shadow:0 2px 6px rgba(0,0,0,0.05); margin-top:4px;">',
+                    f'<table style="width:100%; border-collapse:collapse; background:#ffffff; font-size:{global_font_px}px; line-height:1.15;">',
+                    '<thead style="position:sticky; top:0; z-index:20;">',
+                    '<tr style="background:#002244; color:#ffffff; font-weight:800;">',
+                    f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">CODE</th>',
+                    f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:left; min-width:165px;">SHOP / OUTLET NAME</th>',
+                    f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:left; min-width:140px;">ROUTE (PJP)</th>',
+                    f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">DAY</th>',
+                    f'<th rowspan="2" style="padding:{pad_v+2}px {pad_h}px; border:1px solid #003366; text-align:center;">PACKS</th>'
+                ]
+                for s_title, s_color, valid_items in active_series:
+                    o_html.append(f'<th colspan="{len(valid_items)}" style="background:{s_color}; color:#ffffff; padding:{pad_v}px {pad_h}px; border:1px solid rgba(255,255,255,0.25); text-align:center;">{s_title}</th>')
+                o_html.append('</tr><tr>')
+
+                for s_title, s_color, valid_items in active_series:
+                    for short_lbl, full_key in valid_items:
+                        is_hl = (full_key == highlight_sku)
+                        th_bg = "#facc15" if is_hl else s_color
+                        th_fg = "#0f172a" if is_hl else "#ffffff"
+                        th_bdr = "2px solid #eab308" if is_hl else "1px solid rgba(255,255,255,0.2)"
+                        o_html.append(f'<th style="background:{th_bg}; color:{th_fg}; padding:{pad_v}px 4px; border:{th_bdr}; text-align:center; font-size:{max(8, global_font_px-1)}px;">{short_lbl}</th>')
+                o_html.append('</tr></thead><tbody>')
+
+                for _, orow in render_outlets.iterrows():
+                    oc = orow['Outlet_Code']
+                    b_set = outlet_bought_sets.get(oc, set())
+                    is_zero_shop = len(b_set) == 0
+                    row_bg = "#fff1f2" if is_zero_shop else "#ffffff"
+                    pack_badge_bg = "#fee2e2" if is_zero_shop else "#dcfce7"
+                    pack_badge_fg = "#b91c1c" if is_zero_shop else "#15803d"
+
+                    sk_cells = []
+                    for short_lbl, full_key in all_ordered_skus:
+                        has_pack = full_key in b_set
+                        is_hl = (full_key == highlight_sku)
+                        if has_pack:
+                            c_bg = "#86efac" if is_hl else "#dcfce7"
+                            c_fg = "#14532d"
+                            c_txt = "✓"
+                        else:
+                            c_bg = "#fef9c3" if is_hl else row_bg
+                            c_fg = "#94a3b8"
+                            c_txt = ""
+                        c_bdr = "2px solid #eab308" if is_hl else "1px solid #e2e8f0"
+                        sk_cells.append(f'<td style="padding:{pad_v}px 4px; border:{c_bdr}; text-align:center; background:{c_bg}; color:{c_fg}; font-weight:900;">{c_txt}</td>')
+
+                    o_html.append(
+                        f'<tr style="background:{row_bg};">'
+                        f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#475569; font-weight:600;">{oc}</td>'
+                        f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; font-weight:700; color:#0f172a; white-space:nowrap;">{orow["Outlet_Name"]}</td>'
+                        f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; color:#334155; white-space:nowrap;">{orow["PJP_Name"]}</td>'
+                        f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; color:#004B93; font-weight:700; white-space:nowrap;">{orow["Planned_Days"]}</td>'
+                        f'<td style="padding:{pad_v}px {pad_h}px; border:1px solid #e2e8f0; text-align:center; background:{pack_badge_bg}; color:{pack_badge_fg}; font-weight:800;">{len(b_set)}/{total_sku_count}</td>'
+                        f'{"".join(sk_cells)}'
+                        f'</tr>'
+                    )
+
+                o_html.append('</tbody></table></div>')
+                st.markdown("".join(o_html), unsafe_allow_html=True)
+            else:
+                st.info("Is filter mein koi shop mojood nahi hai.")
+        else:
+            display_cols = ['Outlet_Code', 'Outlet_Name', 'BOOKER_Name', 'PJP_Name', 'Planned_Days', 'Billing_Status', 'Missing_Brands', 'SKUs_Missing', 'SKUs_Bought', 'Missing_Products_List']
+            st.dataframe(filtered_outlets[display_cols], use_container_width=True, height=480)
+
+    # BOTTOM EXPORT BAR: COMPLETE 8-SHEET EXCEL REPORT
     st.write("")
-    dl_col1, dl_col2, dl_col3, _ = st.columns([1.4, 1.5, 1.5, 1.6])
-    with dl_col1:
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            if len(df_export_routes_count) > 0:
-                df_export_routes_count.to_excel(writer, sheet_name='Matrix Rows (Count)', index=False)
-                df_export_routes_pct.to_excel(writer, sheet_name='Matrix Rows (%)', index=False)
-            if len(df_export_routes_cols) > 0:
-                df_export_routes_cols.to_excel(writer, sheet_name='Routes Cols (Transposed)', index=False)
-            df_sku_rep.drop(columns=['Actual Pen Num']).to_excel(writer, sheet_name='SKU Penetration', index=False)
-            if len(pack_agg) > 0:
-                pack_agg.drop(columns=['Pen_Num']).to_excel(writer, sheet_name='Pack Penetration', index=False)
-            if len(df_booker_score) > 0:
-                df_booker_score.drop(columns=['Pen_Num']).to_excel(writer, sheet_name='Booker Scorecard', index=False)
-            filtered_outlets.drop(columns=['Missing_Brands_Raw']).to_excel(writer, sheet_name='Missing & Zero Outlets', index=False)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        if len(df_export_routes_count) > 0:
+            df_export_routes_count.to_excel(writer, sheet_name='Matrix Rows (Count)', index=False)
+            df_export_routes_pct.to_excel(writer, sheet_name='Matrix Rows (%)', index=False)
+        if len(df_export_routes_cols) > 0:
+            df_export_routes_cols.to_excel(writer, sheet_name='Routes Cols (Transposed)', index=False)
+        df_sku_rep.drop(columns=['Actual Pen Num']).to_excel(writer, sheet_name='SKU Penetration', index=False)
+        if len(pack_agg) > 0:
+            pack_agg.drop(columns=['Pen_Num']).to_excel(writer, sheet_name='Pack Penetration', index=False)
+        if len(df_booker_score) > 0:
+            df_booker_score.drop(columns=['Pen_Num']).to_excel(writer, sheet_name='Booker Scorecard', index=False)
+        if len(df_booking_matrix) > 0:
+            df_booking_matrix.to_excel(writer, sheet_name='Outlet SKU Booking Matrix', index=False)
+        filtered_outlets.drop(columns=['Missing_Brands_Raw']).to_excel(writer, sheet_name='Missing & Zero Outlets', index=False)
 
-        st.download_button(
-            label="📥 Download Full Report (Excel)",
-            data=output.getvalue(),
-            file_name="Pepsi_Retail_Penetration_Complete_Report.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-    with dl_col2:
-        matrix_title = f"RETAIL COVERAGE MATRIX ({matrix_group_by.upper()} - {display_metric_rows.upper()}) | {sel_dist} | {sel_sdm}"
-        matrix_sub = f"Planned Outlets: {total_planned_outlets:,} | Billed: {billed_outlets:,} ({overall_pen_pct:.1f}%) | Avg SKU/Bill: {avg_sku_per_bill:.2f}"
-        matrix_png = generate_route_matrix_png(df_png_matrix, display_metric_rows, matrix_title, matrix_sub, target_mapping, all_ordered_skus)
-        if matrix_png is not None:
-            st.download_button(
-                label="🗺️ Download Matrix Image (PNG)",
-                data=matrix_png,
-                file_name="Pepsi_Route_Coverage_Matrix.png",
-                mime="image/png"
-            )
-    with dl_col3:
-        png_title = f"PEPSICO RETAIL COVERAGE SUMMARY | {sel_dist} | {sel_sdm}"
-        png_sub = f"Planned: {total_planned_outlets:,} | Billed: {billed_outlets:,} | Coverage: {overall_pen_pct:.1f}% | SKU/Bill: {avg_sku_per_bill:.2f}"
-        png_bytes = generate_table_png(df_sku_rep, png_title, png_sub)
-        if png_bytes is not None:
-            st.download_button(
-                label="🖼️ Download SKU Summary (PNG)",
-                data=png_bytes,
-                file_name="Pepsi_Retail_Coverage_Summary.png",
-                mime="image/png"
-            )
+    st.download_button(
+        label="📥 Download Complete Multi-Sheet Report (Excel)",
+        data=output.getvalue(),
+        file_name="Pepsi_Retail_Penetration_Complete_Report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
 
 else:
     t_badge = "✓ Saved Targets Active" if repo_target_bytes else "Default Targets Ready"
